@@ -166,9 +166,12 @@ final class RepoModel {
         if let view = ProcessInfo.processInfo.environment["SIDTREE_DEBUG_VIEW"] {
             Task {
                 try? await Task.sleep(nanoseconds: 1_500_000_000)
+                let wanted = ProcessInfo.processInfo.environment["SIDTREE_DEBUG_SELECT"] ?? ""
                 if view == "status" {
                     sidebarSelection = .fileStatus
-                    selectStatusFile(status.unstaged.first)
+                    selectStatusFile(status.staged.first ?? status.unstaged.first)
+                } else if !wanted.isEmpty, let row = rows.first(where: { $0.commit.subject.contains(wanted) }) {
+                    selectCommit(row.commit.id)
                 } else if rows.count > 2 {
                     selectCommit(rows[2].commit.id)
                 }

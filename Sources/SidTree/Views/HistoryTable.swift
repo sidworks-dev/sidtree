@@ -41,6 +41,10 @@ struct HistoryTable: NSViewRepresentable {
         table.autosaveName = "SidTreeHistoryTable"
         table.autosaveTableColumns = true
 
+        let header = OpaqueHeaderView()
+        header.frame = NSRect(x: 0, y: 0, width: 100, height: 28)
+        table.headerView = header
+
         let headerMenu = NSMenu()
         headerMenu.delegate = context.coordinator
         headerMenu.identifier = NSUserInterfaceItemIdentifier("header")
@@ -546,4 +550,17 @@ final class DescriptionCellView: NSTableCellView {
         case .tag: return (NSColor(srgbRed: 0.45, green: 0.45, blue: 0.50, alpha: 1), "tag.fill")
         }
     }
+}
+
+/// Column header with a solid card background, so rows never shine through while scrolling.
+final class OpaqueHeaderView: NSTableHeaderView {
+    override func draw(_ dirtyRect: NSRect) {
+        Theme.nsCard.setFill()
+        dirtyRect.fill()
+        super.draw(dirtyRect)
+        Theme.nsBorder.setFill()
+        NSRect(x: dirtyRect.minX, y: bounds.maxY - 1, width: dirtyRect.width, height: 1).fill()
+    }
+
+    override var isOpaque: Bool { true }
 }

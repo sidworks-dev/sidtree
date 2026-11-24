@@ -32,7 +32,7 @@ jobs:
           fi
           ditto -c -k --keepParent build/SidTree.app "build/SidTree-$VERSION.zip"
 
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v6
         with:
           name: SidTree
           path: build/SidTree-*.zip

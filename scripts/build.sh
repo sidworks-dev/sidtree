@@ -20,12 +20,23 @@ fi
 echo "▸ SDK: $SDK"
 
 mkdir -p build
-echo "▸ Compiling ($CONFIG)…"
-swiftc $OPT -parse-as-library -swift-version 5 -sdk "$SDK" \
-  -target "$(uname -m)-apple-macosx14.0" \
-  -module-name SidTree \
-  $(find Sources/SidTree -name '*.swift' | sort) \
-  -o build/SidTree
+# Release builds are universal (Apple Silicon + Intel); debug builds only the local architecture.
+ARCHS="${ARCHS:-$([ "$CONFIG" = "debug" ] && uname -m || echo "arm64 x86_64")}"
+echo "▸ Compiling ($CONFIG, $ARCHS)…"
+SOURCES=$(find Sources/SidTree -name '*.swift' | sort)
+PIDS=()
+for ARCH in $ARCHS; do
+  mkdir -p "build/$ARCH"
+  swiftc $OPT -parse-as-library -swift-version 5 -sdk "$SDK" \
+    -target "$ARCH-apple-macosx14.0" \
+    -module-name SidTree \
+    -module-cache-path "build/$ARCH/ModuleCache" \
+    $SOURCES \
+    -o "build/$ARCH/SidTree" &
+  PIDS+=($!)
+done
+for PID in "${PIDS[@]}"; do wait "$PID"; done
+lipo -create $(for ARCH in $ARCHS; do echo "build/$ARCH/SidTree"; done) -output build/SidTree
 
 echo "▸ Bundling…"
 rm -rf "$APP"
@@ -53,6 +64,15 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>NSHighResolutionCapable</key><true/>
   <key>NSPrincipalClass</key><string>NSApplication</string>
   <key>NSSupportsAutomaticTermination</key><false/>
+  <key>CFBundleDocumentTypes</key>
+  <array>
+    <dict>
+      <key>CFBundleTypeName</key><string>Folder</string>
+      <key>CFBundleTypeRole</key><string>Viewer</string>
+      <key>LSHandlerRank</key><string>Alternate</string>
+      <key>LSItemContentTypes</key><array><string>public.folder</string></array>
+    </dict>
+  </array>
 </dict>
 </plist>
 PLIST

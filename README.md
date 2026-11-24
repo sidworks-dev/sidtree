@@ -1,55 +1,99 @@
+<div align="center">
+
+<img src=".github/assets/readme/sidtree-logo.png" alt="SidTree logo" width="80">
+
 # SidTree
 
-Fast, native macOS Git client (SwiftUI + AppKit) — a SourceTree replacement in the Sidworks / BerryPath style.
+**A fast, calm Git client for macOS.**
 
-## Install / update
+Everything you used SourceTree for: history, staging, branches, pull and push.<br>
+Native, quick to open and easy on the eyes.
 
-Download the latest zip from [Releases](https://github.com/sidworks-dev/sidtree/releases), unzip and move `SidTree.app` to `/Applications`.
-SidTree checks for updates itself (*SidTree → Check for Updates…*). The repository is private, so updates use your GitHub CLI login (`gh auth login`).
+[![macOS](https://img.shields.io/badge/macOS-14%2B-7c3aed?labelColor=24292f)](#install)
+[![Apple Silicon and Intel](https://img.shields.io/badge/Apple_Silicon_%26_Intel-universal-7c3aed?labelColor=24292f)](#install)
+[![Swift](https://img.shields.io/badge/Swift-SwiftUI_%2B_AppKit-f05138?labelColor=24292f)](#building-from-source)
 
-## Build
+[Why](#why-sidtree) · [Features](#what-you-get) · [Install](#install) · [AI commit messages](#ai-commit-messages) · [Updates](#updates) · [Shortcuts](#keyboard-shortcuts)
 
-Only the Xcode Command Line Tools are needed:
+</div>
 
-```bash
-./scripts/build.sh          # release build → build/SidTree.app
-./scripts/build.sh debug    # debug build
-cp -R build/SidTree.app /Applications/   # optional install
+<br>
+
+<img src=".github/assets/readme/history.png" alt="SidTree history with a commit graph, branch and tag labels, and the diff of the selected commit" width="100%">
+
+## Why SidTree?
+
+SourceTree does a lot, but it takes its time: opening a large repository, switching branches, loading a diff. SidTree is built for the moments in between. It opens a repository with tens of thousands of commits in a fraction of a second, keeps up with your editor while you work, and puts the actions you use every day one click away.
+
+It is a native Mac app that talks to the Git already installed on your Mac. No account, no background service, nothing to configure.
+
+## What you get
+
+- **History with a graph.** Every branch, merge and tag at a glance, with authors, dates, hashes and ahead/behind counts.
+- **Staging that stays out of the way.** Tick files to stage them, or stage, unstage and discard single hunks right from the diff.
+- **The everyday actions.** Commit, pull, push to any remote branch, fetch, branch, merge, rebase, stash and tag.
+- **Calm conflict handling.** A clear banner while a merge or rebase is in progress, with resolve, continue and abort.
+- **Always up to date.** Changes from your editor or terminal show up by themselves.
+- **Light and dark.** A warm light theme and a dark theme, or follow macOS.
+
+<img src=".github/assets/readme/status.png" alt="File status with staged and unstaged files, a diff with stage and unstage buttons per hunk, and the commit box" width="100%">
+
+_File status: stage whole files or single hunks, then commit._
+
+<img src=".github/assets/readme/dashboard.png" alt="Start screen with recent repositories, their branch, changes and last commit" width="100%">
+
+_The start screen shows every recent repository with its branch, local changes and what is waiting to be pushed or pulled._
+
+<img src=".github/assets/readme/history-dark.png" alt="SidTree history in the dark theme" width="100%">
+
+## Install
+
+1. Download `SidTree-x.y.z.zip` from the latest [release](https://github.com/sidworks-dev/sidtree/releases).
+2. Unzip it and drag **SidTree** into your **Applications** folder.
+3. Open it. The first time, macOS asks whether you trust the app: open **System Settings → Privacy & Security** and choose **Open Anyway**.
+
+Open a repository with **File → Open** (⌘O), pick one from the start screen, or drop a folder on the app icon.
+
+## AI commit messages
+
+SidTree can write the commit message for you with **Claude Code** or **Codex**, if one of them is installed and logged in on your Mac. Turn it on in **Settings → AI**, then press **Generate** next to the commit box.
+
+- It uses fast models by default (Claude Haiku, or the fastest Codex model on your account).
+- Only a compact version of the staged changes is sent, to keep it quick and cheap.
+- The instruction is yours to edit; a short default writes one clear line, like _Strip template inspector markers from HTML fragments_.
+- Off by default. Nothing is sent anywhere until you switch it on.
+
+## Updates
+
+SidTree checks for new versions by itself and shows a small badge when one is available. **SidTree → Check for Updates…** installs it and relaunches. After an update, **What's New** lists the changes.
+
+Because this repository is private, updates use your GitHub login through the [GitHub CLI](https://cli.github.com): run `gh auth login` once.
+
+## Keyboard shortcuts
+
+| Action | Shortcut |
+| --- | --- |
+| Open repository | ⌘O |
+| File status / history | ⌘1 / ⌘2 |
+| Commit | ⇧⌘C, then ⌘↩ to confirm |
+| Generate commit message | ⌥⌘G |
+| Pull / push / fetch | ⇧⌘L / ⇧⌘P / ⇧⌘F |
+| Branch / merge / stash | ⇧⌘B / ⇧⌘M / ⇧⌘S |
+| Refresh | ⌘R |
+
+## Requirements
+
+- macOS 14 Sonoma or later, on Apple Silicon or Intel
+- Git (included with the Xcode Command Line Tools, or from Homebrew)
+
+## Building from source
+
+```sh
+./scripts/build.sh    # creates build/SidTree.app
 ```
 
-`scripts/sidtree [path]` opens a repository from the terminal (`open -a SidTree`).
+Only the Xcode Command Line Tools are needed. Releases are built by GitHub Actions from a version tag; see `scripts/release.sh` and [CHANGELOG.md](CHANGELOG.md).
 
-## Releasing
+## Credits
 
-1. Add a `## [x.y.z] - date` section to `CHANGELOG.md` (shown in the app's *What's New*).
-2. Commit, then run `scripts/release.sh x.y.z`.
-3. GitHub Actions builds the app and publishes the release with those notes; running apps offer the update.
-
-Every push to `main` is built by CI as well (artifact kept for 14 days).
-The app icon is generated from the Sidworks logo with `scripts/make-icon.swift`.
-
-## Features
-
-- History with commit graph, ref badges (local/remote/tags, ahead/behind), hashes, author, dates
-  - All/current branch, show remote branches, date/ancestor order, search, lazy loading (10k+ commits)
-  - Context menu: checkout, merge, rebase, new branch/tag, reset (soft/mixed/hard), revert, cherry-pick, copy SHA, delete branch
-- File status: staged/unstaged lists with checkboxes, multi-select (⌘/⇧), stage/unstage/discard per file and per hunk
-- Commit box with amend and "push after commit"
-- Pull, Push (choose remote + remote branch name per branch, track, tags, force-with-lease), Fetch (+ auto-fetch)
-- Branches: create, delete (local/remote), rename, double-click to checkout (remote → tracking branch)
-- Merge (no-ff, squash, no-commit), rebase, stash (apply/pop/delete), tags
-- Merge/rebase conflict banner with abort/continue and resolve ours/theirs
-- Live refresh via FSEvents, light/dark/system theme, recent repositories dashboard, clone
-- AI commit messages via the local Claude Code or Codex CLI (optional, Settings → AI)
-- Update checker and What's New from `CHANGELOG.md`
-
-## Shortcuts
-
-| | |
-|---|---|
-| ⌘O / ⌘N | Open repository / new window |
-| ⌘1 / ⌘2 | File status / history |
-| ⇧⌘C / ⌘↩ | Commit / confirm commit |
-| ⇧⌘L / ⇧⌘P / ⇧⌘F | Pull / push / fetch |
-| ⇧⌘B / ⇧⌘M / ⇧⌘S / ⇧⌘T | Branch / merge / stash / tag |
-| ⌘R | Refresh |
+Built with ❤️ by [Sidworks](https://sidworks.nl).

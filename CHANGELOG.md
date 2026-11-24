@@ -14,6 +14,7 @@ All notable changes to SidTree. Newest first; the app shows these notes in **Wha
 - AI commit messages with your local Claude Code or Codex CLI, with model picker and editable instruction
 - Repository dashboard with recent projects, clone, light/dark theme
 - Update checker and this What's New window
+- Universal app for Apple Silicon and Intel Macs; drop a folder on the app icon to open it
 
 ### Performance
 - Commit-graph optimisation: history of large repositories loads up to 10× faster
