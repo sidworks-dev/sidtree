@@ -1,13 +1,22 @@
 name: Release
 
-# Fallback for releases: runs when VERSION changes on main without [skip ci], or by hand via
-# "Run workflow". scripts/release.sh normally builds and publishes from a Mac, avoiding the
-# queue for GitHub's macOS runners.
+# Runs when VERSION changes on main (scripts/release.sh), or by hand via "Run workflow".
+# Builds SidTree and publishes release v<VERSION> with the notes from CHANGELOG.md.
 on:
   push:
     branches: [main]
     paths: [VERSION]
   workflow_dispatch:
+    inputs:
+      ref:
+        description: Commit, branch or tag to release (empty = latest main)
+        required: false
+        default: ""
+      runner:
+        description: macOS runner (Apple Silicon runners are sometimes queued for a long time)
+        type: choice
+        default: macos-15-intel
+        options: [macos-15-intel, macos-15, macos-26]
 
 concurrency:
   group: release
@@ -18,7 +27,8 @@ permissions:
 
 jobs:
   release:
-    runs-on: macos-15
+    # The universal app (Apple Silicon + Intel) builds on either kind of runner.
+    runs-on: ${{ inputs.runner || 'macos-15-intel' }}
     timeout-minutes: 30
     env:
       # Optional: with these secrets set, releases are signed and notarized (no Gatekeeper warning).
@@ -30,6 +40,8 @@ jobs:
       GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.ref || github.sha }}
 
       - name: Read version
         id: version
@@ -76,4 +88,4 @@ jobs:
             on { print }
           ' CHANGELOG.md > notes.md
           gh release create "v$VERSION" build/SidTree-*.dmg build/SidTree-*.zip \
-            --target "$GITHUB_SHA" --title "SidTree $VERSION" --notes-file notes.md
+            --target "$(git rev-parse HEAD)" --title "SidTree $VERSION" --notes-file notes.md
