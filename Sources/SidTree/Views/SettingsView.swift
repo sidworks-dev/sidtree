@@ -76,7 +76,7 @@ struct GeneralSettingsView: View {
                         Task { await UpdateChecker.shared.check(userInitiated: true) }
                     }
                 }
-                Text("Releases come from github.com/\(UpdateChecker.repo). The repository is private, so the GitHub CLI login (`gh auth login`) is used when needed.")
+                Text("Updates come from the releases on github.com/\(UpdateChecker.repo).")
                     .font(.caption).foregroundStyle(.secondary)
             }
             Section {

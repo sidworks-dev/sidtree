@@ -263,7 +263,7 @@ final class UpdateChecker: ObservableObject {
         }
     }
 
-    /// Public API first; the repository is private, so fall back to the GitHub CLI's login.
+    /// GitHub's public API first; the GitHub CLI (when installed) is a fallback, e.g. when rate-limited.
     private func fetchLatest() async throws -> ReleaseInfo {
         if let feed = Self.localFeed {
             guard let data = try? Data(contentsOf: feed), let info = Self.parse(data) else {
@@ -279,7 +279,7 @@ final class UpdateChecker: ObservableObject {
             return info
         }
         guard let gh = Self.ghPath else {
-            throw AIError(message: "Could not reach the SidTree releases. The repository is private: install and log in to the GitHub CLI (`gh auth login`) to receive updates.")
+            throw AIError(message: "Could not reach GitHub to check for updates. Check your internet connection and try again.")
         }
         let r = try await AICommitGenerator.run(gh, ["api", "repos/\(Self.repo)/releases/latest"], cwd: nil,
                                                 env: Self.env, stdin: nil, timeout: 20)
@@ -373,7 +373,7 @@ final class UpdateChecker: ObservableObject {
             }
         }
         guard let gh = Self.ghPath else {
-            throw AIError(message: "Downloading requires the GitHub CLI (`gh auth login`) because the repository is private.")
+            throw AIError(message: "The update could not be downloaded. Try again, or download it from the releases page.")
         }
         let r = try await AICommitGenerator.run(gh, ["release", "download", release.tag, "-R", Self.repo,
                                                      "-p", "*.zip", "-D", dir.path, "--clobber"],

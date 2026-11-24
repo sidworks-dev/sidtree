@@ -67,10 +67,10 @@ _The start screen shows every recent repository with its branch, local changes a
 
 ## Install
 
-**Quickest**, with the [GitHub CLI](https://cli.github.com) (`gh auth login`), straight into Applications without any macOS warning:
+**Quickest**, straight into Applications without any macOS warning. Paste this in Terminal:
 
 ```sh
-gh api repos/sidworks-dev/sidtree/contents/scripts/install.sh --jq .content | base64 -d | bash
+curl -fsSL https://raw.githubusercontent.com/sidworks-dev/sidtree/main/scripts/install.sh | bash
 ```
 
 **Or with the disk image:**
@@ -93,8 +93,6 @@ SidTree can write the commit message for you with **Claude Code** or **Codex**, 
 ## Updates
 
 SidTree checks for new versions by itself and shows a small badge when one is available. **SidTree → Check for Updates…** installs it and relaunches. After an update, **What's New** lists the changes.
-
-Because this repository is private, updates use your GitHub login through the [GitHub CLI](https://cli.github.com): run `gh auth login` once.
 
 ## Keyboard shortcuts
 
