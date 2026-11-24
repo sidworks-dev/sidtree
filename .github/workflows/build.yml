@@ -11,10 +11,10 @@ on:
         description: Version tag to (re)build, e.g. v0.4.0
         required: true
       runner:
-        description: macOS runner (Apple Silicon runners are sometimes queued for a long time)
+        description: macOS runner
         type: choice
-        default: macos-15-intel
-        options: [macos-15-intel, macos-15, macos-26]
+        default: macos-15
+        options: [macos-15, macos-15-intel, macos-26]
 
 concurrency:
   group: release
@@ -26,7 +26,7 @@ permissions:
 jobs:
   release:
     # The universal app (Apple Silicon + Intel) builds on either kind of runner.
-    runs-on: ${{ inputs.runner || 'macos-15-intel' }}
+    runs-on: ${{ inputs.runner || 'macos-15' }}
     timeout-minutes: 30
     env:
       # Optional: with these secrets set, releases are signed and notarized (no Gatekeeper warning).
