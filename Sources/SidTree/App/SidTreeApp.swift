@@ -30,11 +30,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             LaunchRequests.pending.append(url)
         }
         NotificationCenter.default.post(name: .openRepositoryRequest, object: nil)
-        ensureWindowForPendingRequests()
+        Self.ensureWindowForPendingRequests()
     }
 
     /// When launched with paths, SwiftUI skips its default window; open one so the request is handled.
-    private func ensureWindowForPendingRequests() {
+    static func ensureWindowForPendingRequests() {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
             guard !LaunchRequests.pending.isEmpty else { return }
             if let fileMenu = NSApp.mainMenu?.items.first(where: { $0.submenu?.items.contains { $0.title == "New Window" } == true })?.submenu,
@@ -50,10 +50,42 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSWindow.allowsAutomaticWindowTabbing = true
         AppearanceController.shared.apply()
         DebugSnapshot.scheduleIfRequested()
-        if !LaunchRequests.pending.isEmpty { ensureWindowForPendingRequests() }
+        if !LaunchRequests.pending.isEmpty { Self.ensureWindowForPendingRequests() }
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
+
+    /// Right-click on the Dock icon: recent repositories, like Finder's recent folders.
+    func applicationDockMenu(_ sender: NSApplication) -> NSMenu? {
+        let menu = NSMenu()
+        for url in RecentRepos.shared.urls.prefix(12) {
+            let item = ClosureMenuItem(url.lastPathComponent) { Self.openRepository(url) }
+            let icon = NSWorkspace.shared.icon(forFile: url.path)
+            icon.size = NSSize(width: 16, height: 16)
+            item.image = icon
+            item.toolTip = (url.path as NSString).abbreviatingWithTildeInPath
+            menu.addItem(item)
+        }
+        if !menu.items.isEmpty { menu.addItem(.separator()) }
+        menu.addItem(ClosureMenuItem("Open Repository…") {
+            NSApp.activate(ignoringOtherApps: true)
+            if let url = RepoPicker.choose() { Self.openRepository(url) }
+        })
+        return menu
+    }
+
+    /// Brings an already open repository window to the front, or opens the repository in a window.
+    static func openRepository(_ url: URL) {
+        NSApp.activate(ignoringOtherApps: true)
+        let name = url.lastPathComponent
+        if let window = NSApp.windows.first(where: { $0.isVisible && $0.title == name }) {
+            window.makeKeyAndOrderFront(nil)
+            return
+        }
+        if !LaunchRequests.pending.contains(url) { LaunchRequests.pending.append(url) }
+        NotificationCenter.default.post(name: .openRepositoryRequest, object: nil)
+        ensureWindowForPendingRequests()
+    }
 }
 
 @main

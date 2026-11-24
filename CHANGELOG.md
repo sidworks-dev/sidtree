@@ -4,6 +4,11 @@ All notable changes to SidTree. Newest first; the app shows these notes in **Wha
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-11-24
+
+### Added
+- Right-click the SidTree icon in the Dock to open one of your recent repositories, or open a new one
+
 ## [0.4.0] - 2026-11-24
 
 ### Added
