@@ -1,7 +1,8 @@
 name: Release
 
-# Runs only when VERSION changes on main (or by hand via "Run workflow").
-# Builds SidTree, then publishes release v<VERSION> with the notes from CHANGELOG.md.
+# Fallback for releases: runs when VERSION changes on main without [skip ci], or by hand via
+# "Run workflow". scripts/release.sh normally builds and publishes from a Mac, avoiding the
+# queue for GitHub's macOS runners.
 on:
   push:
     branches: [main]
