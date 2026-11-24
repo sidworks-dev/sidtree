@@ -48,7 +48,7 @@ How it stays fast:
 ## What you get
 
 - **History with a graph.** Every branch, merge and tag at a glance, with authors, dates, hashes and ahead/behind counts.
-- **Staging that stays out of the way.** Tick files to stage them, or stage, unstage and discard single hunks right from the diff.
+- **Staging that stays out of the way.** Tick files to stage them, or stage, unstage and discard single hunks right from the diff. Drag files into your editor to open them.
 - **The everyday actions.** Commit, pull, push to any remote branch, fetch, branch, merge, rebase, stash and tag.
 - **AI commit messages.** One click writes a clear commit message from your staged changes, with Claude Code or Codex.
 - **Calm conflict handling.** A clear banner while a merge or rebase is in progress, with resolve, continue and abort.

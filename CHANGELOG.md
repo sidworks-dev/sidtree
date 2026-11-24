@@ -4,6 +4,11 @@ All notable changes to SidTree. Newest first; the app shows these notes in **Wha
 
 ## [Unreleased]
 
+## [0.5.2] - 2026-11-24
+
+### Added
+- Drag one or more staged or unstaged files into editors such as PhpStorm to open them, while retaining drag-to-stage and drag-to-unstage
+
 ## [0.5.1] - 2026-11-24
 
 ### Changed

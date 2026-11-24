@@ -12,6 +12,7 @@ struct FileListView<Menu: View>: View {
     var onDoubleClick: ((FileChange) -> Void)?
     /// When set, rows can be dragged to the other list ("staged" or "unstaged").
     var dragKind: String?
+    var dragRoot: URL?
     /// Space bar: stage/unstage the selected files.
     var onToggleSelection: (([FileChange]) -> Void)?
     @ViewBuilder var menu: (FileChange) -> Menu
@@ -33,7 +34,6 @@ struct FileListView<Menu: View>: View {
                             .onTapGesture(count: 2) { onDoubleClick?(file) }
                             .simultaneousGesture(TapGesture().onEnded { click(file) })
                             .contextMenu { menu(file) }
-                            .modifier(FileDragModifier(kind: dragKind, files: dragFiles(for: file)))
                     }
                 }
                 .padding(FileListMetrics.padding)
@@ -41,13 +41,17 @@ struct FileListView<Menu: View>: View {
                 .overlayPreferenceValue(FileRowContentBounds.self) { anchors in
                     GeometryReader { geometry in
                         FileMarqueeSelection(ids: files.map(\.id), selection: $selection,
-                                             contentFrames: anchors.mapValues { geometry[$0] },
+                                             contentFrames: anchors.content.mapValues { geometry[$0] },
                                              onClick: { index, flags in click(files[index], modifiers: flags) },
                                              onFinish: { index in
                                                  guard let index else { return }
                                                  anchor = files[index].id
                                                  onSelect(files[index])
-                                             })
+                                             },
+                                             dragFrames: dragRoot != nil && dragKind != nil
+                                                 ? anchors.draggable.mapValues { geometry[$0] } : [:],
+                                             onDoubleClick: { onDoubleClick?(files[$0]) },
+                                             onDragItems: draggingItems)
                     }
                 }
             }
@@ -94,6 +98,11 @@ struct FileListView<Menu: View>: View {
         return files.filter { selection.contains($0.id) }
     }
 
+    private func draggingItems(for index: Int) -> [NSDraggingItem] {
+        guard let dragRoot, let dragKind, files.indices.contains(index) else { return [] }
+        return FileDragPayload.draggingItems(root: dragRoot, kind: dragKind, files: dragFiles(for: files[index]))
+    }
+
     private func click(_ file: FileChange, modifiers flags: NSEvent.ModifierFlags = NSEvent.modifierFlags) {
         listFocused = true
         cursor = file.id
@@ -131,24 +140,27 @@ struct FileRow: View {
                     .buttonStyle(.plain)
                     .help(checkbox ? "Unstage" : "Stage")
                 }
-                FileStatusIcon(kind: file.kind)
-                HStack(spacing: 5) {
-                    Text(file.path)
-                        .font(.system(size: 12.5, weight: focused ? .semibold : .regular))
-                        .foregroundStyle(Theme.text)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                        .layoutPriority(1)
-                    if let orig = file.originalPath {
-                        Text("← \(orig)")
-                            .font(.system(size: 11))
-                            .foregroundStyle(Theme.secondaryText)
+                HStack(spacing: 8) {
+                    FileStatusIcon(kind: file.kind)
+                    HStack(spacing: 5) {
+                        Text(file.path)
+                            .font(.system(size: 12.5, weight: focused ? .semibold : .regular))
+                            .foregroundStyle(Theme.text)
                             .lineLimit(1)
                             .truncationMode(.middle)
+                            .layoutPriority(1)
+                        if let orig = file.originalPath {
+                            Text("← \(orig)")
+                                .font(.system(size: 11))
+                                .foregroundStyle(Theme.secondaryText)
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                        }
                     }
                 }
+                .anchorPreference(key: FileRowContentBounds.self, value: .bounds) { FileRowBounds(draggable: [file.id: $0]) }
             }
-            .anchorPreference(key: FileRowContentBounds.self, value: .bounds) { [file.id: $0] }
+            .transformAnchorPreference(key: FileRowContentBounds.self, value: .bounds) { $0.content[file.id] = $1 }
             Spacer(minLength: 0)
         }
         .padding(.horizontal, 8)
@@ -160,46 +172,5 @@ struct FileRow: View {
         .contentShape(Rectangle())
         .onHover { hover = $0 }
         .help(file.path)
-    }
-}
-
-// MARK: - Drag and drop between the staged and unstaged lists
-
-enum FileDragPayload {
-    static let marker = "sidtree-files"
-
-    static func encode(kind: String, paths: [String]) -> String {
-        ([marker, kind] + paths).joined(separator: "\n")
-    }
-
-    /// Returns the source list ("staged"/"unstaged") and the paths, or nil for foreign drops.
-    static func decode(_ text: String) -> (kind: String, paths: [String])? {
-        let lines = text.components(separatedBy: "\n")
-        guard lines.count >= 3, lines[0] == marker else { return nil }
-        return (lines[1], Array(lines[2...]))
-    }
-}
-
-struct FileDragModifier: ViewModifier {
-    let kind: String?
-    let files: [FileChange]
-
-    func body(content: Content) -> some View {
-        if let kind {
-            content.draggable(FileDragPayload.encode(kind: kind, paths: files.map(\.path))) {
-                HStack(spacing: 6) {
-                    FileStatusIcon(kind: files.first?.kind ?? .modified)
-                    Text(files.count == 1 ? files[0].fileName : "\(files.count) files")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(Theme.text)
-                }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
-                .background(Theme.card, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-                .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(Theme.accent.opacity(0.6)))
-            }
-        } else {
-            content
-        }
     }
 }

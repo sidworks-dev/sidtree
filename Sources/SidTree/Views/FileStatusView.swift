@@ -24,13 +24,13 @@ struct FileStatusView: View {
                     SplitPane(axis: .vertical, fraction: $listSplit, minFirst: 90, minSecond: 90) {
                         stagedCard
                             .overlay(dropHighlight(dropOnStaged, text: "Drop to stage"))
-                            .dropDestination(for: String.self) { items, _ in
+                            .dropDestination(for: FileDragPayload.self) { items, _ in
                                 handleDrop(items, toStaged: true)
                             } isTargeted: { dropOnStaged = $0 }
                     } second: {
                         unstagedCard
                             .overlay(dropHighlight(dropOnUnstaged, text: "Drop to unstage"))
-                            .dropDestination(for: String.self) { items, _ in
+                            .dropDestination(for: FileDragPayload.self) { items, _ in
                                 handleDrop(items, toStaged: false)
                             } isTargeted: { dropOnUnstaged = $0 }
                     }
@@ -76,6 +76,7 @@ struct FileStatusView: View {
                                  onToggle: { model.unstage([$0]) },
                                  onDoubleClick: { model.unstage([$0]) },
                                  dragKind: "staged",
+                                 dragRoot: model.root,
                                  onToggleSelection: { model.unstage($0) }) { file in
                         let targets = selected(file, in: model.status.staged, selection: stagedSelection)
                         Button(targets.count > 1 ? "Unstage \(targets.count) Files" : "Unstage") { model.unstage(targets) }
@@ -111,6 +112,7 @@ struct FileStatusView: View {
                                  onToggle: { model.stage([$0]) },
                                  onDoubleClick: { model.stage([$0]) },
                                  dragKind: "unstaged",
+                                 dragRoot: model.root,
                                  onToggleSelection: { model.stage($0) }) { file in
                         let targets = selected(file, in: model.status.unstaged, selection: unstagedSelection)
                         Button(targets.count > 1 ? "Stage \(targets.count) Files" : "Stage") { model.stage(targets) }
@@ -185,15 +187,16 @@ struct FileStatusView: View {
         }
     }
 
-    private func handleDrop(_ items: [String], toStaged: Bool) -> Bool {
+    private func handleDrop(_ items: [FileDragPayload], toStaged: Bool) -> Bool {
         let source = toStaged ? "unstaged" : "staged"
-        let paths = Set(items.compactMap(FileDragPayload.decode).filter { $0.kind == source }.flatMap(\.paths))
-        guard !paths.isEmpty else { return false }
+        let paths = FileDragPayload.paths(in: items, from: source, root: model.root)
+        let files = (toStaged ? model.status.unstaged : model.status.staged).filter { paths.contains($0.path) }
+        guard !files.isEmpty else { return false }
         if toStaged {
-            model.stage(model.status.unstaged.filter { paths.contains($0.path) })
+            model.stage(files)
             unstagedSelection = []
         } else {
-            model.unstage(model.status.staged.filter { paths.contains($0.path) })
+            model.unstage(files)
             stagedSelection = []
         }
         return true

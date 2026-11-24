@@ -12,20 +12,30 @@ enum FileListMetrics {
     }
 }
 
+struct FileRowBounds {
+    var content: [String: Anchor<CGRect>] = [:]
+    var draggable: [String: Anchor<CGRect>] = [:]
+}
+
 struct FileRowContentBounds: PreferenceKey {
-    static var defaultValue: [String: Anchor<CGRect>] { [:] }
-    static func reduce(value: inout [String: Anchor<CGRect>], nextValue: () -> [String: Anchor<CGRect>]) {
-        value.merge(nextValue(), uniquingKeysWith: { _, new in new })
+    static var defaultValue: FileRowBounds { FileRowBounds() }
+    static func reduce(value: inout FileRowBounds, nextValue: () -> FileRowBounds) {
+        let next = nextValue()
+        value.content.merge(next.content, uniquingKeysWith: { _, new in new })
+        value.draggable.merge(next.draggable, uniquingKeysWith: { _, new in new })
     }
 }
 
-/// The overlay handles only empty space. File content and checkboxes keep their own gestures.
+/// Empty space starts selection; file labels start native file drags. Checkboxes keep their own gestures.
 struct FileMarqueeSelection: NSViewRepresentable {
     let ids: [String]
     @Binding var selection: Set<String>
     let contentFrames: [String: CGRect]
     let onClick: (Int, NSEvent.ModifierFlags) -> Void
     let onFinish: (Int?) -> Void
+    var dragFrames: [String: CGRect] = [:]
+    var onDoubleClick: (Int) -> Void = { _ in }
+    var onDragItems: (Int) -> [NSDraggingItem] = { _ in [] }
 
     func makeNSView(context: Context) -> FileMarqueeView { FileMarqueeView() }
 
@@ -34,9 +44,12 @@ struct FileMarqueeSelection: NSViewRepresentable {
         view.ids = ids
         view.selection = selection
         view.contentFrames = Array(contentFrames.values)
+        view.dragFrames = dragFrames
         view.onSelectionChange = { selection = $0 }
         view.onClick = onClick
         view.onFinish = onFinish
+        view.onDoubleClick = onDoubleClick
+        view.onDragItems = onDragItems
     }
 
     static func dismantleNSView(_ view: FileMarqueeView, coordinator: ()) {
@@ -44,13 +57,16 @@ struct FileMarqueeSelection: NSViewRepresentable {
     }
 }
 
-final class FileMarqueeView: NSView {
+final class FileMarqueeView: NSView, NSDraggingSource {
     var ids: [String] = []
     var selection: Set<String> = []
     var contentFrames: [CGRect] = []
+    var dragFrames: [String: CGRect] = [:]
     var onSelectionChange: (Set<String>) -> Void = { _ in }
     var onClick: (Int, NSEvent.ModifierFlags) -> Void = { _, _ in }
     var onFinish: (Int?) -> Void = { _ in }
+    var onDoubleClick: (Int) -> Void = { _ in }
+    var onDragItems: (Int) -> [NSDraggingItem] = { _ in [] }
 
     private var start: CGPoint?
     private var initialSelection: Set<String> = []
@@ -58,6 +74,7 @@ final class FileMarqueeView: NSView {
     private(set) var selectionRect: CGRect?
     private var dragEvent: NSEvent?
     private var scrollTimer: Timer?
+    private var dragIndex: Int?
 
     override var isFlipped: Bool { true }
     override var acceptsFirstResponder: Bool { true }
@@ -68,20 +85,33 @@ final class FileMarqueeView: NSView {
         guard bounds.contains(localPoint), !isHidden else { return nil }
         if let event = NSApp.currentEvent,
            event.type == .rightMouseDown || event.modifierFlags.contains(.control) { return nil }
+        if dragFrames.values.contains(where: { $0.contains(localPoint) }) { return self }
         return contentFrames.contains(where: { $0.contains(localPoint) }) ? nil : self
     }
 
     override func mouseDown(with event: NSEvent) {
-        window?.makeFirstResponder(self)
         start = convert(event.locationInWindow, from: nil)
         initialSelection = selection
         modifiers = event.modifierFlags
+        if let start, let index = row(at: start), dragFrames[ids[index]]?.contains(start) == true {
+            dragIndex = index
+        }
+        if dragIndex == nil { window?.makeFirstResponder(self) }
     }
 
     override func mouseDragged(with event: NSEvent) {
         guard let start else { return }
         let point = convert(event.locationInWindow, from: nil)
         guard selectionRect != nil || hypot(point.x - start.x, point.y - start.y) >= 3 else { return }
+        if let dragIndex {
+            let items = onDragItems(dragIndex)
+            guard !items.isEmpty else { stopTracking(); return }
+            for item in items { item.draggingFrame.origin = CGPoint(x: point.x - 16, y: point.y - 16) }
+            stopTracking()
+            let session = beginDraggingSession(with: items, event: event, source: self)
+            session.draggingFormation = .stack
+            return
+        }
         dragEvent = event
         if scrollTimer == nil {
             let timer = Timer(timeInterval: 1.0 / 30, repeats: true) { [weak self] _ in
@@ -108,11 +138,16 @@ final class FileMarqueeView: NSView {
             stopTracking()
             if let index {
                 onClick(index, flags)
+                if event.clickCount == 2 { onDoubleClick(index) }
             } else if flags.isDisjoint(with: [.command, .shift]) {
                 setSelection([])
                 onFinish(nil)
             }
         }
+    }
+
+    func draggingSession(_ session: NSDraggingSession, sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation {
+        .copy
     }
 
     override func keyDown(with event: NSEvent) {
@@ -196,6 +231,7 @@ final class FileMarqueeView: NSView {
         scrollTimer?.invalidate()
         scrollTimer = nil
         dragEvent = nil
+        dragIndex = nil
         start = nil
         selectionRect = nil
         needsDisplay = true
