@@ -63,7 +63,7 @@ jobs:
       - name: Package
         run: |
           ditto -c -k --keepParent build/SidTree.app "build/SidTree-${{ steps.version.outputs.version }}.zip"
-          ./scripts/make-dmg.sh
+          bash -x ./scripts/make-dmg.sh
 
       - name: Sign and notarize disk image
         if: steps.version.outputs.exists != 'true' && env.MACOS_CERTIFICATE != ''
