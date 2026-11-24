@@ -29,3 +29,5 @@ jobs:
       - uses: actions/checkout@v5
       - name: ShellCheck
         run: shellcheck scripts/*.sh scripts/sidtree
+      - name: CLI launcher
+        run: ./scripts/test-cli.sh

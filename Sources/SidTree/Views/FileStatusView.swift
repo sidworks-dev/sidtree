@@ -341,9 +341,10 @@ struct CommitActionControl: View {
                             Text("Processing…")
                         }
                     } else {
-                        Label(title, systemImage: "checkmark")
+                        Text(title)
                     }
                 }
+                    .fixedSize(horizontal: true, vertical: false)
                     .padding(.horizontal, 12)
                     .frame(height: 30)
                     .background(hoverMain && !disabled ? .white.opacity(0.1) : .clear)
@@ -357,14 +358,23 @@ struct CommitActionControl: View {
             .help(model.committing ? "Committing…" : help)
 
             Rectangle().fill(.white.opacity(0.3)).frame(width: 1, height: 18)
-            Button(action: showMenu) {
+            Menu {
+                Button("Commit") { model.pushAfterCommit = false }
+                Button("Commit & Push") { model.pushAfterCommit = true }
+                    .disabled(model.currentBranch == nil)
+            } label: {
                 Image(systemName: "chevron.down")
                     .font(.system(size: 9, weight: .bold))
+                    .foregroundStyle(.white)
                     .frame(width: 26, height: 30)
                     .background(hoverMenu ? .white.opacity(0.1) : .clear)
                     .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .foregroundColor(.white)
+            .tint(.white)
+            .fixedSize()
             .onHover { hoverMenu = $0 }
             .help("Choose Commit or Commit & Push; remembered for this repository")
             .accessibilityLabel("Commit action")
@@ -374,19 +384,6 @@ struct CommitActionControl: View {
         .background(Theme.action, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
         .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(Theme.accent.opacity(0.25)))
-    }
-
-    private func showMenu() {
-        let menu = NSMenu()
-        let commit = ClosureMenuItem("Commit") { model.pushAfterCommit = false }
-        commit.state = model.pushAfterCommit ? .off : .on
-        menu.addItem(commit)
-        let push = ClosureMenuItem("Commit & Push") { model.pushAfterCommit = true }
-        push.state = model.pushAfterCommit ? .on : .off
-        push.isEnabled = model.currentBranch != nil
-        menu.autoenablesItems = false
-        menu.addItem(push)
-        menu.popUp(positioning: nil, at: NSEvent.mouseLocation, in: nil)
     }
 }
 

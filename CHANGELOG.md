@@ -4,6 +4,20 @@ All notable changes to SidTree. Newest first; the app shows these notes in **Wha
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-11-24
+
+### Added
+- Open projects from Terminal with `sidtree`, `sidtree .` or `sidtree /path/to/project`, including paths to files or repository subdirectories
+- **Install Command Line Tools…** in the SidTree menu; the Terminal installer also installs the command automatically
+- CLI help and version options, with automated checks for launching and safe installation
+- Opening an already open project from Terminal brings its window to the front
+
+### Fixed
+- The Commit action dropdown stays open when clicked and remains available when the main button is disabled
+
+### Changed
+- Removed the checkmark before the Commit button's label
+
 ## [0.4.2] - 2026-11-24
 
 ### Fixed

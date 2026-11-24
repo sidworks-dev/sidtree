@@ -42,6 +42,8 @@ struct AppCommands: Commands {
         }
 
         CommandGroup(after: .appInfo) {
+            Button("Install Command Line Tools…") { CommandLineTools.install() }
+            Divider()
             Button("Check for Updates…") {
                 openWindow(id: "update")
                 Task { await UpdateChecker.shared.check(userInitiated: true) }

@@ -1,3 +1,101 @@
 #!/bin/bash
-# Open a repository in SidTree from the terminal:  sidtree [path]
-open -a SidTree "$(cd "${1:-.}" && pwd)"
+# Bundled launcher and installer: sidtree [path] / sidtree --install [directory].
+set -euo pipefail
+
+usage() {
+    cat <<'HELP'
+Usage: sidtree [path]
+       sidtree --install [directory]
+
+Open the Git repository containing path, or the current directory when omitted.
+Paths to files and subdirectories are supported.
+
+Options:
+  -h, --help       Show this help.
+  -v, --version    Show the installed version.
+      --install    Install the sidtree command in a directory on your PATH.
+      --          Treat the following argument as a path.
+HELP
+}
+
+fail() { printf 'sidtree: %s\n' "$*" >&2; exit 1; }
+
+case "${1:-}" in
+    -h|--help) usage; exit 0 ;;
+esac
+
+# Follow the installed symlink back into the app, including relative symlinks.
+LAUNCHER="${BASH_SOURCE[0]}"
+while [ -L "$LAUNCHER" ]; do
+    LAUNCHER_DIR="$(cd -P "$(dirname "$LAUNCHER")" && pwd)"
+    LAUNCHER="$(readlink "$LAUNCHER")"
+    [[ "$LAUNCHER" = /* ]] || LAUNCHER="$LAUNCHER_DIR/$LAUNCHER"
+done
+LAUNCHER_DIR="$(cd -P "$(dirname "$LAUNCHER")" && pwd)"
+LAUNCHER="$LAUNCHER_DIR/$(basename "$LAUNCHER")"
+
+case "$LAUNCHER_DIR" in
+    */Contents/Resources) APP="${LAUNCHER_DIR%/Contents/Resources}" ;;
+    *)
+        APP="/Applications/SidTree.app"
+        [ -d "$APP" ] || APP="$LAUNCHER_DIR/../build/SidTree.app"
+        ;;
+esac
+
+case "${1:-}" in
+    -v|--version)
+        VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP/Contents/Info.plist" 2>/dev/null \
+            || cat "$LAUNCHER_DIR/../VERSION" 2>/dev/null)" || fail "Could not determine the SidTree version."
+        printf 'sidtree version %s\n' "$VERSION"
+        exit 0
+        ;;
+    --install)
+        [ "$#" -le 2 ] || fail "Usage: sidtree --install [directory]"
+        INSTALL_DIR="${2:-}"
+        if [ -z "$INSTALL_DIR" ]; then
+            for CANDIDATE in /opt/homebrew/bin /usr/local/bin; do
+                if [ -d "$CANDIDATE" ] && [ -w "$CANDIDATE" ]; then
+                    INSTALL_DIR="$CANDIDATE"
+                    break
+                fi
+            done
+            INSTALL_DIR="${INSTALL_DIR:-$HOME/.local/bin}"
+        fi
+        mkdir -p "$INSTALL_DIR"
+        INSTALL_DIR="$(cd -P "$INSTALL_DIR" && pwd)"
+        DESTINATION="$INSTALL_DIR/sidtree"
+        [ "$DESTINATION" != "$LAUNCHER" ] || fail "The launcher is already at $DESTINATION."
+        if [ -L "$DESTINATION" ]; then
+            PREVIOUS="$(readlink "$DESTINATION")"
+            case "$PREVIOUS" in
+                "$LAUNCHER"|*/SidTree.app/Contents/Resources/sidtree)
+                    rm "$DESTINATION"
+                    ;;
+                *) fail "Cannot replace $DESTINATION: it points to another command." ;;
+            esac
+        elif [ -e "$DESTINATION" ]; then
+            fail "Cannot replace $DESTINATION: a file already exists there."
+        fi
+        ln -s "$LAUNCHER" "$DESTINATION"
+        printf 'Installed sidtree at %s.\n\nRun sidtree, sidtree . or sidtree /path/to/project.\n' "$DESTINATION"
+        case ":$PATH:" in
+            *":$INSTALL_DIR:"*) ;;
+            *)
+                # Keep $PATH literal so the user can paste the command into their shell.
+                # shellcheck disable=SC2016
+                printf '\nIf this directory is not on your terminal PATH, add:\n  export PATH=%q:"$PATH"\n' "$INSTALL_DIR"
+                ;;
+        esac
+        exit 0
+        ;;
+    --) shift ;;
+    -*) fail "Unknown option: $1. Use sidtree --help for usage." ;;
+esac
+
+[ "$#" -le 1 ] || fail "Expected one project path. Use sidtree --help for usage."
+TARGET="${1:-.}"
+[ ! -f "$TARGET" ] || TARGET="$(dirname "$TARGET")"
+ROOT="$(git -C "$TARGET" rev-parse --show-toplevel 2>/dev/null)" \
+    || fail "'$TARGET' is not inside a Git repository."
+[ -d "$APP" ] || fail "SidTree.app could not be found. Install SidTree, then reinstall its command line tools."
+exec open -a "$APP" "$ROOT"

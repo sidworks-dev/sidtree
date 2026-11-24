@@ -81,6 +81,17 @@ curl -fsSL https://raw.githubusercontent.com/sidworks-dev/sidtree/main/scripts/i
 
 Open a repository with **File → Open** (⌘O), pick one from the start screen, or drop a folder on the app icon.
 
+To open projects from Terminal, choose **SidTree → Install Command Line Tools…** once. The Terminal installer above also installs the command automatically.
+
+```sh
+sidtree                     # open the current directory's repository
+sidtree .                   # also works from a repository subdirectory
+sidtree /path/to/project     # open a specific repository
+sidtree --help
+```
+
+The command finds the repository containing the given directory or file. It uses the existing SidTree app and returns immediately to your terminal. The launcher is bundled with the app, so its symlink keeps working after an update. If no shared bin directory is writable, it installs in `~/.local/bin` and shows how to add that directory to your `PATH`.
+
 ## AI commit messages
 
 SidTree can write the commit message for you with **Claude Code** or **Codex**, if one of them is installed and logged in on your Mac. Turn it on in **Settings → AI**, then press **Generate** next to the commit box.

@@ -22,4 +22,8 @@ ditto "$TMP/app/SidTree.app" /Applications/SidTree.app
 xattr -dr com.apple.quarantine /Applications/SidTree.app 2>/dev/null || true
 
 echo "✓ Installed SidTree $(defaults read /Applications/SidTree.app/Contents/Info.plist CFBundleShortVersionString) in /Applications"
+if [ -x /Applications/SidTree.app/Contents/Resources/sidtree ]; then
+    /Applications/SidTree.app/Contents/Resources/sidtree --install \
+        || echo "You can install the sidtree command later from SidTree → Install Command Line Tools…."
+fi
 open /Applications/SidTree.app

@@ -26,16 +26,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func application(_ application: NSApplication, open urls: [URL]) {
-        for url in urls where url.isFileURL && !LaunchRequests.pending.contains(url) {
-            LaunchRequests.pending.append(url)
+        for url in urls where url.isFileURL {
+            let canonical = url.standardizedFileURL.resolvingSymlinksInPath()
+            guard !Self.focusRepository(canonical), !LaunchRequests.pending.contains(canonical) else { continue }
+            LaunchRequests.pending.append(canonical)
         }
         NotificationCenter.default.post(name: .openRepositoryRequest, object: nil)
         Self.ensureWindowForPendingRequests()
     }
 
     /// When launched with paths, SwiftUI skips its default window; open one so the request is handled.
+    private static var windowRequestScheduled = false
+
     static func ensureWindowForPendingRequests() {
+        guard !windowRequestScheduled else { return }
+        windowRequestScheduled = true
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+            windowRequestScheduled = false
             guard !LaunchRequests.pending.isEmpty else { return }
             openNewWindow()
         }
@@ -108,14 +115,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Brings an already open repository window to the front, or opens the repository in a window.
     static func openRepository(_ url: URL) {
         NSApp.activate(ignoringOtherApps: true)
-        let name = url.lastPathComponent
-        if let window = NSApp.windows.first(where: { $0.isVisible && $0.title == name }) {
-            window.makeKeyAndOrderFront(nil)
-            return
-        }
+        if focusRepository(url) { return }
         if !LaunchRequests.pending.contains(url) { LaunchRequests.pending.append(url) }
         NotificationCenter.default.post(name: .openRepositoryRequest, object: nil)
         ensureWindowForPendingRequests()
+    }
+
+    private static func focusRepository(_ url: URL) -> Bool {
+        let canonical = url.standardizedFileURL.resolvingSymlinksInPath()
+        if let window = NSApp.windows.first(where: {
+            ($0.isVisible || $0.isMiniaturized) && $0.representedURL?.standardizedFileURL.resolvingSymlinksInPath().path == canonical.path
+        }) {
+            NSApp.activate(ignoringOtherApps: true)
+            if window.isMiniaturized { window.deminiaturize(nil) }
+            window.makeKeyAndOrderFront(nil)
+            return true
+        }
+        return false
     }
 }
 
@@ -130,6 +146,8 @@ struct SidTreeApp: App {
     var body: some Scene {
         WindowGroup("SidTree", id: "repo", for: URL.self) { $url in
             RepoWindow(url: $url)
+                .handlesExternalEvents(preferring: Set([url?.absoluteString].compactMap { $0 }), allowing: ["*"])
+                .onOpenURL { AppDelegate.openRepository($0) }
         }
         .defaultSize(width: 1400, height: 880)
         .windowStyle(.hiddenTitleBar)

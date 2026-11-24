@@ -50,6 +50,8 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp build/SidTree "$APP/Contents/MacOS/SidTree"
 cp Resources/sidworks-logo.tiff "$APP/Contents/Resources/"
 cp CHANGELOG.md "$APP/Contents/Resources/"
+cp scripts/sidtree "$APP/Contents/Resources/sidtree"
+chmod +x "$APP/Contents/Resources/sidtree"
 [ -f Resources/AppIcon.icns ] && cp Resources/AppIcon.icns "$APP/Contents/Resources/"
 
 cat > "$APP/Contents/Info.plist" <<PLIST

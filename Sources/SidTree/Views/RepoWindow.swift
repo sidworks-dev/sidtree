@@ -19,6 +19,7 @@ struct RepoWindow: View {
                     .background(Theme.canvas)
             }
         }
+        .background(RepositoryWindowIdentity(url: model?.root ?? url))
         .focusedSceneValue(\.repoURL, $url)
         .task(id: url) { await load() }
         .onAppear {
@@ -63,6 +64,17 @@ struct RepoWindow: View {
         model = m
         m.start()
         RecentRepos.shared.add(found.root)
+    }
+}
+
+/// Gives incoming CLI/Finder requests an exact repository identity to focus.
+private struct RepositoryWindowIdentity: NSViewRepresentable {
+    let url: URL?
+
+    func makeNSView(context: Context) -> NSView { NSView() }
+
+    func updateNSView(_ view: NSView, context: Context) {
+        DispatchQueue.main.async { view.window?.representedURL = url }
     }
 }
 
