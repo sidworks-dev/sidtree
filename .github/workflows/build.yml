@@ -17,12 +17,23 @@ permissions:
 jobs:
   build:
     runs-on: macos-15
-    timeout-minutes: 20
+    timeout-minutes: 30
+    env:
+      # Optional: with these secrets set, releases are signed and notarized (no Gatekeeper warning).
+      MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
+      MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
     steps:
       - uses: actions/checkout@v5
 
       - name: Build
         run: ./scripts/build.sh release
+
+      - name: Sign and notarize app
+        if: startsWith(github.ref, 'refs/tags/v') && env.MACOS_CERTIFICATE != ''
+        run: ./scripts/sign-and-notarize.sh app
 
       - name: Package
         run: |
@@ -32,6 +43,10 @@ jobs:
           fi
           ditto -c -k --keepParent build/SidTree.app "build/SidTree-$VERSION.zip"
           ./scripts/make-dmg.sh
+
+      - name: Sign and notarize disk image
+        if: startsWith(github.ref, 'refs/tags/v') && env.MACOS_CERTIFICATE != ''
+        run: ./scripts/sign-and-notarize.sh dmg
 
       - uses: actions/upload-artifact@v6
         with:

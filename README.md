@@ -67,9 +67,17 @@ _The start screen shows every recent repository with its branch, local changes a
 
 ## Install
 
+**Quickest**, with the [GitHub CLI](https://cli.github.com) (`gh auth login`), straight into Applications without any macOS warning:
+
+```sh
+gh api repos/sidworks-dev/sidtree/contents/scripts/install.sh --jq .content | base64 -d | bash
+```
+
+**Or with the disk image:**
+
 1. Download `SidTree-x.y.z.dmg` from the latest [release](https://github.com/sidworks-dev/sidtree/releases).
 2. Open it and drag **SidTree** onto the **Applications** folder.
-3. Open SidTree from Applications. The first time, macOS asks whether you trust the app: open **System Settings → Privacy & Security** and choose **Open Anyway**.
+3. Open SidTree from Applications. If macOS says it could not verify SidTree, choose **Done**, open **System Settings → Privacy & Security** and click **Open Anyway**. This is only needed once; updates install without it.
 
 Open a repository with **File → Open** (⌘O), pick one from the start screen, or drop a folder on the app icon.
 

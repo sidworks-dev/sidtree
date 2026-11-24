@@ -23,6 +23,8 @@ struct GeneralSettingsView: View {
     @AppStorage("terminalApp") private var terminalApp = "Terminal"
     @AppStorage("optimizeRepositories") private var optimizeRepositories = true
     @AppStorage(UpdateChecker.autoCheckKey) private var autoUpdate = true
+    @AppStorage(UpdateChecker.startupKey) private var checkOnStartup = true
+    @Environment(\.openWindow) private var openWindow
     @ObservedObject private var appearance = AppearanceController.shared
 
     var body: some View {
@@ -64,7 +66,16 @@ struct GeneralSettingsView: View {
                 }
             }
             Section("Updates") {
-                Toggle("Check for updates automatically", isOn: $autoUpdate)
+                Toggle("Check for updates on startup", isOn: $checkOnStartup)
+                Toggle("Check periodically while running (every 6 hours)", isOn: $autoUpdate)
+                HStack {
+                    Text("Installed: SidTree \(AppInfo.version)").foregroundStyle(.secondary)
+                    Spacer()
+                    Button("Check Now") {
+                        openWindow(id: "update")
+                        Task { await UpdateChecker.shared.check(userInitiated: true) }
+                    }
+                }
                 Text("Releases come from github.com/\(UpdateChecker.repo). The repository is private, so the GitHub CLI login (`gh auth login`) is used when needed.")
                     .font(.caption).foregroundStyle(.secondary)
             }

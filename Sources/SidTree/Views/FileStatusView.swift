@@ -8,6 +8,8 @@ struct FileStatusView: View {
     @AppStorage("split.status.commit") private var commitSplit = 0.78
     @State private var stagedSelection: Set<String> = []
     @State private var unstagedSelection: Set<String> = []
+    @State private var dropOnStaged = false
+    @State private var dropOnUnstaged = false
 
     var body: some View {
         VStack(spacing: 12) {
@@ -16,8 +18,16 @@ struct FileStatusView: View {
                 SplitPane(axis: .horizontal, fraction: $diffSplit, minFirst: 280, minSecond: 320) {
                     SplitPane(axis: .vertical, fraction: $listSplit, minFirst: 90, minSecond: 90) {
                         stagedCard
+                            .overlay(dropHighlight(dropOnStaged, text: "Drop to stage"))
+                            .dropDestination(for: String.self) { items, _ in
+                                handleDrop(items, toStaged: true)
+                            } isTargeted: { dropOnStaged = $0 }
                     } second: {
                         unstagedCard
+                            .overlay(dropHighlight(dropOnUnstaged, text: "Drop to unstage"))
+                            .dropDestination(for: String.self) { items, _ in
+                                handleDrop(items, toStaged: false)
+                            } isTargeted: { dropOnUnstaged = $0 }
                     }
                 } second: {
                     DiffView(file: model.selectedStatusFile, diff: model.statusDiff,
@@ -53,7 +63,8 @@ struct FileStatusView: View {
                                      model.selectStatusFile(file)
                                  },
                                  onToggle: { model.unstage([$0]) },
-                                 onDoubleClick: { model.unstage([$0]) }) { file in
+                                 onDoubleClick: { model.unstage([$0]) },
+                                 dragKind: "staged") { file in
                         let targets = selected(file, in: model.status.staged, selection: stagedSelection)
                         Button(targets.count > 1 ? "Unstage \(targets.count) Files" : "Unstage") { model.unstage(targets) }
                         Divider()
@@ -85,7 +96,8 @@ struct FileStatusView: View {
                                      model.selectStatusFile(file)
                                  },
                                  onToggle: { model.stage([$0]) },
-                                 onDoubleClick: { model.stage([$0]) }) { file in
+                                 onDoubleClick: { model.stage([$0]) },
+                                 dragKind: "unstaged") { file in
                         let targets = selected(file, in: model.status.unstaged, selection: unstagedSelection)
                         Button(targets.count > 1 ? "Stage \(targets.count) Files" : "Stage") { model.stage(targets) }
                         if file.kind == .conflicted {
@@ -126,6 +138,38 @@ struct FileStatusView: View {
                     try text.write(to: url, atomically: true, encoding: .utf8)
                 }
             }
+        }
+    }
+
+    private func handleDrop(_ items: [String], toStaged: Bool) -> Bool {
+        let source = toStaged ? "unstaged" : "staged"
+        let paths = Set(items.compactMap(FileDragPayload.decode).filter { $0.kind == source }.flatMap(\.paths))
+        guard !paths.isEmpty else { return false }
+        if toStaged {
+            model.stage(model.status.unstaged.filter { paths.contains($0.path) })
+            unstagedSelection = []
+        } else {
+            model.unstage(model.status.staged.filter { paths.contains($0.path) })
+            stagedSelection = []
+        }
+        return true
+    }
+
+    @ViewBuilder
+    private func dropHighlight(_ active: Bool, text: String) -> some View {
+        if active {
+            RoundedRectangle(cornerRadius: Theme.radius, style: .continuous)
+                .strokeBorder(Theme.accent, style: StrokeStyle(lineWidth: 2, dash: [6, 4]))
+                .background(Theme.accent.opacity(0.06), in: RoundedRectangle(cornerRadius: Theme.radius, style: .continuous))
+                .overlay(alignment: .bottom) {
+                    Text(text)
+                        .font(.system(size: 11.5, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 10).padding(.vertical, 4)
+                        .background(Theme.accent, in: Capsule())
+                        .padding(.bottom, 12)
+                }
+                .allowsHitTesting(false)
         }
     }
 

@@ -10,6 +10,8 @@ struct FileListView<Menu: View>: View {
     var onSelect: (FileChange) -> Void
     var onToggle: ((FileChange) -> Void)? = nil
     var onDoubleClick: ((FileChange) -> Void)? = nil
+    /// When set, rows can be dragged to the other list ("staged" or "unstaged").
+    var dragKind: String? = nil
     @ViewBuilder var menu: (FileChange) -> Menu
 
     @State private var anchor: String?
@@ -26,10 +28,17 @@ struct FileListView<Menu: View>: View {
                         .onTapGesture(count: 2) { onDoubleClick?(file) }
                         .simultaneousGesture(TapGesture().onEnded { click(file) })
                         .contextMenu { menu(file) }
+                        .modifier(FileDragModifier(kind: dragKind, files: dragFiles(for: file)))
                 }
             }
             .padding(6)
         }
+    }
+
+    /// Dragging a selected row drags the whole selection; otherwise just that row.
+    private func dragFiles(for file: FileChange) -> [FileChange] {
+        guard selection.contains(file.id), selection.count > 1 else { return [file] }
+        return files.filter { selection.contains($0.id) }
     }
 
     private func click(_ file: FileChange) {
@@ -94,5 +103,46 @@ struct FileRow: View {
         .contentShape(Rectangle())
         .onHover { hover = $0 }
         .help(file.path)
+    }
+}
+
+// MARK: - Drag and drop between the staged and unstaged lists
+
+enum FileDragPayload {
+    static let marker = "sidtree-files"
+
+    static func encode(kind: String, paths: [String]) -> String {
+        ([marker, kind] + paths).joined(separator: "\n")
+    }
+
+    /// Returns the source list ("staged"/"unstaged") and the paths, or nil for foreign drops.
+    static func decode(_ text: String) -> (kind: String, paths: [String])? {
+        let lines = text.components(separatedBy: "\n")
+        guard lines.count >= 3, lines[0] == marker else { return nil }
+        return (lines[1], Array(lines[2...]))
+    }
+}
+
+struct FileDragModifier: ViewModifier {
+    let kind: String?
+    let files: [FileChange]
+
+    func body(content: Content) -> some View {
+        if let kind {
+            content.draggable(FileDragPayload.encode(kind: kind, paths: files.map(\.path))) {
+                HStack(spacing: 6) {
+                    FileStatusIcon(kind: files.first?.kind ?? .modified)
+                    Text(files.count == 1 ? files[0].fileName : "\(files.count) files")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(Theme.text)
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(Theme.card, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(Theme.accent.opacity(0.6)))
+            }
+        } else {
+            content
+        }
     }
 }

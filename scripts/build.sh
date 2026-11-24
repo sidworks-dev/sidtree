@@ -5,7 +5,7 @@ cd "$(dirname "$0")/.."
 
 CONFIG="${1:-release}"
 APP="build/SidTree.app"
-VERSION="$(cat VERSION 2>/dev/null || echo 0.1.0)"
+VERSION="${SIDTREE_VERSION:-$(cat VERSION 2>/dev/null || echo 0.1.0)}"
 OPT="-O -wmo"; [ "$CONFIG" = "debug" ] && OPT="-Onone -g"
 
 # SDK 27's SwiftUI implements @State as a macro whose plugin only ships with Xcode.

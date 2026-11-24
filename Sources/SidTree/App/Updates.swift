@@ -204,12 +204,47 @@ final class UpdateChecker: ObservableObject {
     static let autoCheckKey = "update.autoCheck"
 
     /// Checks at most every 6 hours unless the user asked.
+    static let startupKey = "update.checkOnStartup"
+    private let announcedKey = "update.announcedVersion"
+    private var timer: Timer?
+
+    /// On launch: check right away (if enabled) and show the update window once per new version;
+    /// while running, check again every 6 hours (if enabled).
+    func startAutomaticChecks(openWindow: OpenWindowAction) {
+        let d = UserDefaults.standard
+        if d.object(forKey: Self.startupKey) as? Bool ?? true {
+            Task {
+                await check(userInitiated: false)
+                if let release = available, ProcessInfo.processInfo.environment["SIDTREE_DEBUG_AUTOINSTALL"] != nil {
+                    await install(release)   // test hook: what "Install & Relaunch" does
+                    return
+                }
+                if let release = available, d.string(forKey: announcedKey) != release.version.description {
+                    d.set(release.version.description, forKey: announcedKey)
+                    openWindow(id: "update")
+                }
+            }
+        }
+        timer?.invalidate()
+        timer = Timer.scheduledTimer(withTimeInterval: 3600, repeats: true) { _ in
+            Task { @MainActor in UpdateChecker.shared.checkIfDue() }
+        }
+    }
+
     func checkIfDue() {
         let d = UserDefaults.standard
         guard d.object(forKey: Self.autoCheckKey) as? Bool ?? true else { return }
         let last = d.double(forKey: lastCheckKey)
         guard Date().timeIntervalSince1970 - last > 6 * 3600 else { return }
         Task { await check(userInitiated: false) }
+    }
+
+    /// A local release.json (GitHub release format) used instead of GitHub, for testing updates.
+    /// Set with the `SIDTREE_UPDATE_FEED` environment variable or the `update.feed` default.
+    static var localFeed: URL? {
+        let path = ProcessInfo.processInfo.environment["SIDTREE_UPDATE_FEED"] ?? UserDefaults.standard.string(forKey: "update.feed")
+        guard let path, !path.isEmpty else { return nil }
+        return URL(fileURLWithPath: (path as NSString).expandingTildeInPath)
     }
 
     func check(userInitiated: Bool) async {
@@ -230,6 +265,12 @@ final class UpdateChecker: ObservableObject {
 
     /// Public API first; the repository is private, so fall back to the GitHub CLI's login.
     private func fetchLatest() async throws -> ReleaseInfo {
+        if let feed = Self.localFeed {
+            guard let data = try? Data(contentsOf: feed), let info = Self.parse(data) else {
+                throw AIError(message: "The local update feed at \(feed.path) could not be read.")
+            }
+            return info
+        }
         var request = URLRequest(url: URL(string: "https://api.github.com/repos/\(Self.repo)/releases/latest")!)
         request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
         request.timeoutInterval = 15
@@ -316,6 +357,11 @@ final class UpdateChecker: ObservableObject {
     }
 
     private func download(_ release: ReleaseInfo, to dir: URL) async throws -> URL {
+        if let url = release.assetURL, url.isFileURL {
+            let dest = dir.appendingPathComponent(url.lastPathComponent)
+            try FileManager.default.copyItem(at: url, to: dest)
+            return dest
+        }
         if let url = release.assetURL {
             var request = URLRequest(url: url)
             request.timeoutInterval = 120
@@ -447,6 +493,6 @@ enum LaunchTasks {
         guard !done else { return }
         done = true
         if WhatsNew.shouldShowAfterUpdate() { openWindow(id: "whats-new") }
-        UpdateChecker.shared.checkIfDue()
+        UpdateChecker.shared.startAutomaticChecks(openWindow: openWindow)
     }
 }
