@@ -108,7 +108,7 @@ final class FileMarqueeView: NSView {
             stopTracking()
             if let index {
                 onClick(index, flags)
-            } else if flags.intersection([.command, .shift]).isEmpty {
+            } else if flags.isDisjoint(with: [.command, .shift]) {
                 setSelection([])
                 onFinish(nil)
             }
@@ -116,8 +116,7 @@ final class FileMarqueeView: NSView {
     }
 
     override func keyDown(with event: NSEvent) {
-        if event.keyCode == 53, start != nil { cancelSelection() }
-        else { super.keyDown(with: event) }
+        if event.keyCode == 53, start != nil { cancelSelection() } else { super.keyDown(with: event) }
     }
 
     override func viewWillMove(toWindow newWindow: NSWindow?) {

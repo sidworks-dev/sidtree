@@ -117,7 +117,7 @@ enum GraphPalette {
         NSColor(srgbRed: 0.94, green: 0.36, blue: 0.66, alpha: 1),  // pink
         NSColor(srgbRed: 0.85, green: 0.70, blue: 0.10, alpha: 1),  // yellow
         NSColor(srgbRed: 0.40, green: 0.48, blue: 0.95, alpha: 1),  // indigo
-        NSColor(srgbRed: 0.55, green: 0.75, blue: 0.20, alpha: 1),  // lime
+        NSColor(srgbRed: 0.55, green: 0.75, blue: 0.20, alpha: 1)  // lime
     ]
 
     static func color(_ index: Int) -> NSColor { colors[((index % colors.count) + colors.count) % colors.count] }

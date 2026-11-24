@@ -10,7 +10,7 @@ struct LogoMark: View {
     var size: CGFloat = 30
     var body: some View {
         if let logo = AppInfo.logo {
-            Image(nsImage: logo).resizable().aspectRatio(contentMode: .fit)
+            Image(nsImage: logo).resizable().interpolation(.high).antialiased(true).scaledToFit()
                 .frame(width: size * 0.62, height: size * 0.82)
                 .frame(width: size, height: size)
                 .background(Theme.violetSoft, in: RoundedRectangle(cornerRadius: size * 0.28, style: .continuous))
@@ -50,21 +50,21 @@ struct SidebarView: View {
                         model.sidebarSelection = .history
                     }
 
-                    SectionHeader(title: "Branches", count: model.localBranches.count, expanded: $branchesExpanded)
+                    SectionHeader(title: "Branches", itemCount: model.localBranches.count, expanded: $branchesExpanded)
                     if branchesExpanded {
                         ForEach(filtered(model.localBranches)) { branch in
                             branchRow(branch)
                         }
                     }
 
-                    SectionHeader(title: "Remotes", count: model.remotes.count, expanded: $remotesExpanded)
+                    SectionHeader(title: "Remotes", itemCount: model.remotes.count, expanded: $remotesExpanded)
                     if remotesExpanded {
                         ForEach(model.remotes, id: \.self) { remote in
                             remoteSection(remote)
                         }
                     }
 
-                    SectionHeader(title: "Tags", count: model.tags.count, expanded: $tagsExpanded)
+                    SectionHeader(title: "Tags", itemCount: model.tags.count, expanded: $tagsExpanded)
                     if tagsExpanded {
                         ForEach(model.tags.filter { matches($0.name) }) { tag in
                             ItemRow(symbol: "tag", title: tag.name, selected: model.sidebarSelection == .tag(tag.name)) {
@@ -76,7 +76,7 @@ struct SidebarView: View {
                         }
                     }
 
-                    SectionHeader(title: "Stashes", count: model.stashes.count, expanded: $stashesExpanded)
+                    SectionHeader(title: "Stashes", itemCount: model.stashes.count, expanded: $stashesExpanded)
                     if stashesExpanded {
                         ForEach(model.stashes) { stash in
                             ItemRow(symbol: "tray.full", title: stash.message, selected: model.sidebarSelection == .stash(stash.ref)) {
@@ -153,7 +153,7 @@ struct SidebarView: View {
             item.image = NSImage(systemSymbolName: "folder", accessibilityDescription: nil)
             menu.addItem(item)
         }
-        if menu.items.count > 0 { menu.addItem(.separator()) }
+        if !menu.items.isEmpty { menu.addItem(.separator()) }
         menu.addItem(ClosureMenuItem("Open Repository") {
             if let url = RepoPicker.choose() { switchRepo(url) }
         })
@@ -374,7 +374,7 @@ extension ItemRow where Trailing == EmptyView {
 
 struct SectionHeader: View {
     let title: String
-    let count: Int
+    let itemCount: Int
     @Binding var expanded: Bool
 
     var body: some View {
@@ -384,8 +384,8 @@ struct SectionHeader: View {
                     .font(.system(size: 10.5, weight: .semibold))
                     .tracking(0.6)
                     .foregroundStyle(Theme.secondaryText)
-                if count > 0 {
-                    Text("\(count)").font(.system(size: 10, weight: .medium).monospacedDigit()).foregroundStyle(Theme.secondaryText.opacity(0.7))
+                if itemCount > 0 {
+                    Text("\(itemCount)").font(.system(size: 10, weight: .medium).monospacedDigit()).foregroundStyle(Theme.secondaryText.opacity(0.7))
                 }
                 Spacer()
                 Image(systemName: "chevron.right")

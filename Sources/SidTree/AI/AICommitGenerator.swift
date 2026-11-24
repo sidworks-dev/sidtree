@@ -123,7 +123,6 @@ struct AIError: LocalizedError {
 /// Generates commit messages with the user's locally installed `claude` or `codex` CLI,
 /// using their own login. Nothing is sent anywhere unless the user enabled a provider.
 enum AICommitGenerator {
-
     // MARK: Locating the CLI
 
     /// PATH from the user's login shell; apps started from Finder only get a minimal PATH,
@@ -323,10 +322,12 @@ enum AICommitGenerator {
         let excludes = [":(exclude)*.lock", ":(exclude)package-lock.json", ":(exclude)pnpm-lock.yaml", ":(exclude)yarn.lock",
                         ":(exclude)*.min.js", ":(exclude)*.min.css", ":(exclude)*.map", ":(exclude)*.svg"]
         async let numstatR = GitRunner.run(["diff", "--cached", "--numstat", "-M"], in: root)
+        async let newFilesR = GitRunner.run(["diff", "--cached", "--name-only", "--diff-filter=A"], in: root)
         async let diffR = GitRunner.run(["diff", "--cached", "--no-ext-diff", "--no-color", "-U1", "-M", "--", "."] + excludes, in: root)
         async let logR = GitRunner.run(["log", "-5", "--format=%s"], in: root)
         async let branchR = GitRunner.run(["rev-parse", "--abbrev-ref", "HEAD"], in: root)
         var (numstat, diff, log, branch) = await (numstatR.output, diffR.output, logR.output, branchR.output)
+        let newFiles = Set(await newFilesR.output.split(separator: "\n").map(String.init))
 
         if amend && numstat.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             // Amending without new staged changes: describe the last commit itself.
@@ -340,11 +341,16 @@ enum AICommitGenerator {
         let files = numstat.split(separator: "\n").map { line -> String in
             let p = line.split(separator: "\t", maxSplits: 2)
             guard p.count == 3 else { return String(line) }
-            return p[0] == "-" ? "bin \(p[2])" : "+\(p[0]) -\(p[1]) \(p[2])"
+            let path = String(p[2])
+            let marker = newFiles.contains(path) ? " (new)" : ""
+            return p[0] == "-" ? "bin \(path)\(marker)" : "+\(p[0]) -\(p[1]) \(path)\(marker)"
         }
 
         var prompt = "Task: write the git commit message for the staged changes below. Follow the instructions exactly; "
-            + "where they define a format, it overrides the style of the recent commits. Reply with only the commit message.\n\n"
+            + "where they define a format, it overrides the style of the recent commits. "
+            + "Name the main purpose of the change set; when many files change, describe what they have in common "
+            + "(new files such as configs are strong hints) instead of listing details. "
+            + "Avoid vague words like 'changes', 'updates', 'improvements' or 'make'. Reply with only the commit message.\n\n"
         prompt += "Branch: \(branch.trimmingCharacters(in: .whitespacesAndNewlines))"
         if amend { prompt += " (amending the last commit)" }
         let trimmedDraft = draft.trimmingCharacters(in: .whitespacesAndNewlines)

@@ -2,12 +2,19 @@
 // Run once: swift scripts/make-dmg-background.swift
 import AppKit
 
+/// Stops the script with a readable message (these are build-time helpers).
+func die(_ message: String) -> Never {
+    FileHandle.standardError.write(Data("error: \(message)\n".utf8))
+    exit(1)
+}
+
 let size = NSSize(width: 660, height: 400)
 
 func render(scale: CGFloat) -> NSBitmapImageRep {
     let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: Int(size.width * scale), pixelsHigh: Int(size.height * scale),
                                bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
-                               colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0)!
+                               colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0)
+    guard let rep else { die("Could not allocate the bitmap") }
     rep.size = size
     NSGraphicsContext.saveGraphicsState()
     NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
@@ -15,7 +22,7 @@ func render(scale: CGFloat) -> NSBitmapImageRep {
     // Warm canvas with a soft violet glow
     NSColor(srgbRed: 0.965, green: 0.957, blue: 0.941, alpha: 1).setFill()
     NSRect(origin: .zero, size: size).fill()
-    NSGradient(colors: [NSColor(srgbRed: 0.49, green: 0.23, blue: 0.93, alpha: 0.10), .clear])!
+    NSGradient(colors: [NSColor(srgbRed: 0.49, green: 0.23, blue: 0.93, alpha: 0.10), .clear])?
         .draw(fromCenter: NSPoint(x: 330, y: 230), radius: 0, toCenter: NSPoint(x: 330, y: 230), radius: 300, options: [])
 
     // Arrow from the app (x 170) to Applications (x 490), icons centred at y = 400 - 190
@@ -43,12 +50,12 @@ func render(scale: CGFloat) -> NSBitmapImageRep {
     let title: [NSAttributedString.Key: Any] = [
         .font: NSFont.systemFont(ofSize: 17, weight: .semibold),
         .foregroundColor: NSColor(srgbRed: 0.12, green: 0.11, blue: 0.14, alpha: 1),
-        .paragraphStyle: para,
+        .paragraphStyle: para
     ]
     let sub: [NSAttributedString.Key: Any] = [
         .font: NSFont.systemFont(ofSize: 12.5),
         .foregroundColor: NSColor(srgbRed: 0.42, green: 0.41, blue: 0.45, alpha: 1),
-        .paragraphStyle: para,
+        .paragraphStyle: para
     ]
     ("Drag SidTree to Applications" as NSString).draw(in: NSRect(x: 0, y: 72, width: size.width, height: 24), withAttributes: title)
     ("Then open it from your Applications folder." as NSString).draw(in: NSRect(x: 0, y: 50, width: size.width, height: 20), withAttributes: sub)
@@ -61,5 +68,10 @@ let image = NSImage(size: size)
 image.addRepresentation(render(scale: 1))
 image.addRepresentation(render(scale: 2))
 let out = URL(fileURLWithPath: CommandLine.arguments.count > 1 ? CommandLine.arguments[1] : "Resources/dmg-background.tiff")
-try! image.tiffRepresentation(using: .lzw, factor: 1)!.write(to: out)
+guard let tiff = image.tiffRepresentation(using: .lzw, factor: 1) else { die("Could not encode the TIFF") }
+do {
+    try tiff.write(to: out)
+} catch {
+    die("Could not write \(out.path): \(error.localizedDescription)")
+}
 print("✓ \(out.path)")

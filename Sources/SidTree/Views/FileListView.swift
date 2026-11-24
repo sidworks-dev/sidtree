@@ -6,14 +6,14 @@ struct FileListView<Menu: View>: View {
     let files: [FileChange]
     let focused: FileChange?
     @Binding var selection: Set<String>
-    var checkbox: Bool? = nil          // nil: no checkbox; true: checked (staged); false: unchecked
+    var checkbox: Bool?          // nil: no checkbox; true: checked (staged); false: unchecked
     var onSelect: (FileChange) -> Void
-    var onToggle: ((FileChange) -> Void)? = nil
-    var onDoubleClick: ((FileChange) -> Void)? = nil
+    var onToggle: ((FileChange) -> Void)?
+    var onDoubleClick: ((FileChange) -> Void)?
     /// When set, rows can be dragged to the other list ("staged" or "unstaged").
-    var dragKind: String? = nil
+    var dragKind: String?
     /// Space bar: stage/unstage the selected files.
-    var onToggleSelection: (([FileChange]) -> Void)? = nil
+    var onToggleSelection: (([FileChange]) -> Void)?
     @ViewBuilder var menu: (FileChange) -> Menu
 
     @State private var anchor: String?
@@ -67,20 +67,6 @@ struct FileListView<Menu: View>: View {
             onToggleSelection(chosen)
             return .handled
         }
-        .background {
-            // ⌘A selects every file in this list while it has focus; text fields keep their own ⌘A.
-            Button("Select All Files") { selectAll() }
-                .keyboardShortcut("a", modifiers: .command)
-                .disabled(!listFocused || files.isEmpty)
-                .opacity(0)
-                .frame(width: 0, height: 0)
-                .accessibilityHidden(true)
-        }
-    }
-
-    private func selectAll() {
-        selection = Set(files.map(\.id))
-        if anchor == nil { anchor = files.first?.id }
     }
 
     /// ↑/↓ move the selection, ⇧ extends it from the anchor.

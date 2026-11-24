@@ -48,6 +48,7 @@ final class AppearanceController: ObservableObject {
 
     func cycle() {
         let all = AppearanceMode.allCases
-        mode = all[(all.firstIndex(of: mode)! + 1) % all.count]
+        let index = all.firstIndex(of: mode) ?? 0
+        mode = all[(index + 1) % all.count]
     }
 }

@@ -152,8 +152,15 @@ final class RepoModel {
     private var activeObserver: NSObjectProtocol?
     private var scrollToken = 0
 
-    static let trace = ProcessInfo.processInfo.environment["SIDTREE_TRACE"] != nil
+    static let tracing = ProcessInfo.processInfo.environment["SIDTREE_TRACE"] != nil
     private let createdAt = Date()
+
+    /// Development timing log, enabled with SIDTREE_TRACE=1.
+    private func trace(_ event: String) {
+        guard Self.tracing else { return }
+        let ms = Int(Date().timeIntervalSince(createdAt) * 1000)
+        FileHandle.standardError.write(Data("[trace] \(event) at \(ms)ms\n".utf8))
+    }
 
     init(root: URL, gitDir: URL) {
         self.root = root
@@ -316,7 +323,7 @@ final class RepoModel {
         guard UserDefaults.standard.object(forKey: "optimizeRepositories") as? Bool ?? true else { return }
         if await !git.hasCommitGraph() {
             try? await git.writeCommitGraph()
-            if Self.trace { FileHandle.standardError.write(Data((String(format: "[trace] commit-graph written at %.0fms", Date().timeIntervalSince(createdAt) * 1000) + "\n").utf8)) }
+            trace("commit-graph written")
         }
     }
 
@@ -354,7 +361,7 @@ final class RepoModel {
             let graph = await Task.detached(priority: .userInitiated) { GraphLayout.layout(commits) }.value
             guard gen == self.layoutGeneration else { return }
             self.rows = zip(commits, graph).map { HistoryRow(commit: $0, graph: $1) }
-            if Self.trace { FileHandle.standardError.write(Data((String(format: "[trace] rows=%d at %.0fms", self.rows.count, Date().timeIntervalSince(self.createdAt) * 1000) + "\n").utf8)) }
+            self.trace("rows=\(self.rows.count)")
             var index: [String: Int] = [:]
             index.reserveCapacity(self.rows.count)
             for (i, row) in self.rows.enumerated() { index[row.commit.id] = i }
@@ -388,6 +395,12 @@ final class RepoModel {
 
     var isFilteringHistory: Bool { !historySearch.trimmingCharacters(in: .whitespaces).isEmpty }
 
+    // Background tasks for AI commit messages
+    private var aiTask: Task<Void, Never>?
+    private var prepareTask: Task<Void, Never>?
+}
+
+extension RepoModel {
     // MARK: - File system events
 
     private func fileSystemChanged(_ change: RepoWatcher.Change) {
@@ -433,13 +446,25 @@ final class RepoModel {
             }
         }
     }
+}
 
+extension RepoModel {
     // MARK: - Operations
 
     /// Runs git operations one after another, shows progress, reports errors and refreshes afterwards.
     func perform(_ label: String, success: String? = nil, refresh: Bool = true, _ op: @escaping () async throws -> Void) {
         let previous = opChain
         opsRunning += 1
+        // Built here, outside the Task, so they hold the model weakly (they live in `problem`).
+        let retry: () -> Void = { [weak self] in self?.perform(label, success: success, refresh: refresh, op) }
+        let stashAndRetry: () -> Void = { [weak self] in
+            guard let self else { return }
+            self.perform("Stashing changes…", success: success, refresh: refresh) {
+                try await self.git.stash(message: "SidTree: before \(label.replacingOccurrences(of: "…", with: "").lowercased())",
+                                         keepIndex: false, includeUntracked: true)
+                try await op()
+            }
+        }
         opChain = Task {
             await previous?.value
             self.activity = label
@@ -450,14 +475,7 @@ final class RepoModel {
                 let message = (error as? GitError)?.message ?? error.localizedDescription
                 self.problem = ProblemInterpreter.report(
                     for: message, label: label, model: self,
-                    retry: { [unowned self] in self.perform(label, success: success, refresh: refresh, op) },
-                    stashAndRetry: { [unowned self] in
-                        self.perform("Stashing changes…", success: success, refresh: refresh) {
-                            try await self.git.stash(message: "SidTree: before \(label.replacingOccurrences(of: "…", with: "").lowercased())",
-                                                     keepIndex: false, includeUntracked: true)
-                            try await op()
-                        }
-                    })
+                    retry: retry, stashAndRetry: stashAndRetry)
             }
             self.pendingChange = []
             if refresh { await self.refreshAll() }
@@ -592,7 +610,9 @@ final class RepoModel {
     func continueRebase() {
         perform("Continuing rebase…", success: "Rebase continued") { try await self.git.continueRebase() }
     }
+}
 
+extension RepoModel {
     // MARK: - Sidebar
 
     private func sidebarChanged() {
@@ -622,7 +642,9 @@ final class RepoModel {
         scrollToken += 1
         scrollRequest = (hash, scrollToken)
     }
+}
 
+extension RepoModel {
     // MARK: - Commit details
 
     func selectCommit(_ id: String?) {
@@ -694,7 +716,9 @@ final class RepoModel {
         let r = await GitRunner.run(["diff", "--no-ext-diff", "-M", "HEAD", "--", file.path], in: root)
         return Parsers.parseDiff(r.output)
     }
+}
 
+extension RepoModel {
     // MARK: - File status
 
     func selectStatusFile(_ file: FileChange?) {
@@ -810,12 +834,15 @@ final class RepoModel {
         case .discard:
             confirm = ConfirmRequest(title: "Discard this hunk?", message: "The changes in this hunk will be lost.", actionTitle: "Discard Hunk", action: run)
         case .reverse:
-            confirm = ConfirmRequest(title: "Reverse this hunk?", message: "The hunk is reversed in your working copy.", actionTitle: "Reverse Hunk", destructive: false, action: run)
+            confirm = ConfirmRequest(title: "Reverse this hunk?", message: "The hunk is reversed in your working copy.",
+                                     actionTitle: "Reverse Hunk", destructive: false, action: run)
         default:
             run()
         }
     }
+}
 
+extension RepoModel {
     // MARK: - Commit
 
     func requestCommit() {
@@ -872,10 +899,10 @@ final class RepoModel {
                            setUpstream: upstream == nil, tags: false, force: amend)
         showToast("Committed and pushed to \(remote)/\(remoteBranch)")
     }
+}
 
+extension RepoModel {
     // MARK: - AI commit message
-
-    private var aiTask: Task<Void, Never>?
 
     func generateCommitMessage() {
         guard !aiGenerating else { return }
@@ -902,8 +929,6 @@ final class RepoModel {
         }
     }
 
-    private var prepareTask: Task<Void, Never>?
-
     /// Quietly generates a message for the current staged changes so "Generate" is instant.
     /// Results are cached per staged state; nothing is filled in until the user asks.
     private func prepareCommitMessageSoon() {
@@ -927,49 +952,5 @@ final class RepoModel {
     static func splitUpstream(_ upstream: String?) -> (String, String)? {
         guard let upstream, let slash = upstream.firstIndex(of: "/") else { return nil }
         return (String(upstream[..<slash]), String(upstream[upstream.index(after: slash)...]))
-    }
-
-    // MARK: - Shell helpers
-
-    func showInFinder() { NSWorkspace.shared.activateFileViewerSelecting([root]) }
-
-    func openTerminal() {
-        let app = UserDefaults.standard.string(forKey: "terminalApp") ?? "Terminal"
-        let p = Process()
-        p.executableURL = URL(fileURLWithPath: "/usr/bin/open")
-        p.arguments = ["-a", app.isEmpty ? "Terminal" : app, root.path]
-        try? p.run()
-    }
-
-    /// The remote the current branch tracks, else `origin`, else the first remote.
-    var preferredRemote: String? {
-        if let up = RepoModel.splitUpstream(currentBranchInfo?.upstream), remotes.contains(up.0) { return up.0 }
-        if remotes.contains("origin") { return "origin" }
-        return remotes.first
-    }
-
-    func openRemoteInBrowser() {
-        Task {
-            guard let remote = preferredRemote else { return }
-            if let url = await git.webURL(remote: remote) {
-                NSWorkspace.shared.open(url)
-            } else {
-                self.error = GitError(command: "open remote", message: "Could not derive a web address for remote '\(remote)'.")
-            }
-        }
-    }
-
-    func copyToPasteboard(_ text: String) {
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(text, forType: .string)
-        showToast("Copied")
-    }
-
-    func open(_ file: FileChange) {
-        NSWorkspace.shared.open(root.appendingPathComponent(file.path))
-    }
-
-    func reveal(_ file: FileChange) {
-        NSWorkspace.shared.activateFileViewerSelecting([root.appendingPathComponent(file.path)])
     }
 }

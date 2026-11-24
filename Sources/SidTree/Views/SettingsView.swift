@@ -122,7 +122,8 @@ struct AISettingsView: View {
                             .font(.caption.monospaced()).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
                     }
                 }
-                Text("Uses the CLI already installed and logged in on this Mac. Only the staged diff (compacted) and recent commit subjects are sent to the provider. Off by default.")
+                Text("Uses the CLI already installed and logged in on this Mac. Only the staged diff (compacted) "
+                     + "and recent commit subjects are sent to the provider. Off by default.")
                     .font(.caption).foregroundStyle(.secondary)
             } header: {
                 Text("AI commit messages")
@@ -137,7 +138,8 @@ struct AISettingsView: View {
                     if claudeModel == AISettings.customModelTag {
                         TextField("Model ID", text: $claudeCustom, prompt: Text("e.g. claude-haiku-5-5"))
                     }
-                    Text("Runs without tools, MCP servers, hooks or plugins and with your instruction as the only system prompt (~800 tokens overhead with Haiku, ~2 s).")
+                    Text("Runs without tools, MCP servers, hooks or plugins and with your instruction as the only "
+                         + "system prompt (~800 tokens overhead with Haiku, ~2 s).")
                         .font(.caption).foregroundStyle(.secondary)
                 }
             }
@@ -157,7 +159,8 @@ struct AISettingsView: View {
                         Text("Medium").tag("medium")
                         Text("High").tag("high")
                     }
-                    Text("Runs with your instruction instead of Codex's agent prompt and ignores your Codex config (MCP servers, profiles): a few hundred tokens instead of ~17k.")
+                    Text("Runs with your instruction instead of Codex's agent prompt and ignores your Codex config "
+                         + "(MCP servers, profiles): a few hundred tokens instead of ~17k.")
                         .font(.caption).foregroundStyle(.secondary)
                 }
             }
@@ -187,7 +190,8 @@ struct AISettingsView: View {
                             .padding(6)
                             .background(Theme.card, in: RoundedRectangle(cornerRadius: 8))
                             .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Theme.border))
-                        Text("Used as the system prompt. Keep it short: every word is sent with each request. Text you type in the commit box before generating is passed along as your intent.")
+                        Text("Used as the system prompt. Keep it short: every word is sent with each request. "
+                             + "Text you type in the commit box before generating is passed along as your intent.")
                             .font(.caption).foregroundStyle(.secondary)
                     }
                 } header: {

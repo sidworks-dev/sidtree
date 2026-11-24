@@ -20,132 +20,175 @@ struct ProblemReport: Identifiable {
     var actions: [ProblemAction] = []
 }
 
+/// Turns git's output into a readable `ProblemReport`. Each recognizer handles one kind of failure.
+@MainActor
 enum ProblemInterpreter {
+    /// Everything a recognizer needs to know about a failed operation.
+    struct Failure {
+        let text: String
+        let lower: String
+        /// Indented lines in git's output, which are usually file paths.
+        let indentedLines: [String]
+        let action: String
+        let model: RepoModel
+        let retry: (() -> Void)?
+        let stashAndRetry: (() -> Void)?
+
+        func contains(_ needles: String...) -> Bool { needles.contains { lower.contains($0) } }
+
+        var tryAgain: [ProblemAction] {
+            retry.map { [ProblemAction(title: "Try Again", style: .prominent, run: $0)] } ?? []
+        }
+    }
+
     /// - Parameters:
     ///   - retry: re-runs the failed operation.
     ///   - stashAndRetry: stashes local changes (incl. untracked) and re-runs the operation.
-    @MainActor
     static func report(for raw: String, label: String, model: RepoModel,
                        retry: (() -> Void)?, stashAndRetry: (() -> Void)?) -> ProblemReport {
         let text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        let lower = text.lowercased()
-        let indented = text.components(separatedBy: "\n")
-            .filter { $0.hasPrefix("\t") || $0.hasPrefix("    ") }
-            .map { $0.trimmingCharacters(in: .whitespaces) }
-            .filter { !$0.isEmpty }
-        let action = label.replacingOccurrences(of: "…", with: "").trimmingCharacters(in: .whitespaces)
+        let failure = Failure(
+            text: text,
+            lower: text.lowercased(),
+            indentedLines: text.components(separatedBy: "\n")
+                .filter { $0.hasPrefix("\t") || $0.hasPrefix("    ") }
+                .map { $0.trimmingCharacters(in: .whitespaces) }
+                .filter { !$0.isEmpty },
+            action: label.replacingOccurrences(of: "…", with: "").trimmingCharacters(in: .whitespaces),
+            model: model, retry: retry, stashAndRetry: stashAndRetry)
 
-        // Local changes would be overwritten (checkout, merge, pull, cherry-pick, stash apply…)
-        if lower.contains("would be overwritten by") {
-            let untracked = lower.contains("untracked working tree files")
-            let what: String = {
-                if lower.contains("by checkout") { return "Switching branches" }
-                if lower.contains("by merge") { return "This merge" }
-                return "This action"
-            }()
-            var r = ProblemReport(
-                symbol: "tray.full.fill",
-                title: untracked ? "Untracked files are in the way" : "Your local changes are in the way",
-                message: "\(what) would overwrite \(untracked ? "untracked files" : "uncommitted changes") in:",
-                files: indented,
-                hint: "Stash them to keep them safe. You can restore them later from Stashes in the sidebar.",
-                details: text)
-            if let stashAndRetry {
-                r.actions.append(ProblemAction(title: lower.contains("by checkout") ? "Stash & Switch" : "Stash & Continue",
-                                               style: .prominent, run: stashAndRetry))
-            }
-            return r
+        let recognizers: [(Failure) -> ProblemReport?] = [
+            localChangesInTheWay, conflicts, pushRejected, noUpstream, cannotConnect, gitBusy, branchNotMerged
+        ]
+        for recognize in recognizers {
+            if let report = recognize(failure) { return report }
         }
+        return fallback(failure)
+    }
 
-        // Merge / rebase / cherry-pick conflicts
-        if lower.contains("conflict") && (lower.contains("merge conflict") || lower.contains("automatic merge failed")
-                                          || lower.contains("could not apply") || lower.contains("after resolving")) {
-            let files = text.components(separatedBy: "\n").compactMap { line -> String? in
-                guard let range = line.range(of: "Merge conflict in ") else { return nil }
-                return String(line[range.upperBound...]).trimmingCharacters(in: .whitespaces)
-            }
-            return ProblemReport(
-                symbol: "arrow.triangle.merge",
-                title: "Conflicts need your attention",
-                message: files.isEmpty ? "Some files were changed on both sides." : "These files were changed on both sides:",
-                files: files,
-                hint: "Resolve them in File Status, stage them and commit (or continue the rebase). You can also abort and go back.",
-                details: text,
-                actions: [
-                    ProblemAction(title: "Abort", style: .destructive) { model.abortOperation() },
-                    ProblemAction(title: "Resolve Conflicts", style: .prominent) { model.sidebarSelection = .fileStatus },
-                ])
+    /// Local changes would be overwritten (checkout, merge, pull, cherry-pick, stash apply…).
+    private static func localChangesInTheWay(_ f: Failure) -> ProblemReport? {
+        guard f.contains("would be overwritten by") else { return nil }
+        let untracked = f.contains("untracked working tree files")
+        let what: String
+        if f.contains("by checkout") {
+            what = "Switching branches"
+        } else if f.contains("by merge") {
+            what = "This merge"
+        } else {
+            what = "This action"
         }
-
-        // Push rejected because the remote moved on
-        if lower.contains("[rejected]") || lower.contains("non-fast-forward") || lower.contains("fetch first")
-            || lower.contains("updates were rejected") {
-            return ProblemReport(
-                symbol: "arrow.up.circle.fill",
-                title: "Push was rejected",
-                message: "The remote branch has commits that you don't have yet.",
-                hint: "Pull first to combine both, then push again.",
-                details: text,
-                actions: [ProblemAction(title: "Pull…", style: .prominent) { model.sheet = .pull }])
+        var report = ProblemReport(
+            symbol: "tray.full.fill",
+            title: untracked ? "Untracked files are in the way" : "Your local changes are in the way",
+            message: "\(what) would overwrite \(untracked ? "untracked files" : "uncommitted changes") in:",
+            files: f.indentedLines,
+            hint: "Stash them to keep them safe. You can restore them later from Stashes in the sidebar.",
+            details: f.text)
+        if let stashAndRetry = f.stashAndRetry {
+            report.actions.append(ProblemAction(title: f.contains("by checkout") ? "Stash & Switch" : "Stash & Continue",
+                                                style: .prominent, run: stashAndRetry))
         }
+        return report
+    }
 
-        if lower.contains("has no upstream branch") || lower.contains("no tracking information") {
-            return ProblemReport(
-                symbol: "arrow.triangle.branch",
-                title: "This branch isn't linked to a remote branch",
-                message: "Git doesn't know which remote branch to use.",
-                hint: "Push the branch once with “Track” enabled; after that pull and push work directly.",
-                details: text,
-                actions: [ProblemAction(title: "Push…", style: .prominent) { model.sheet = .push }])
+    /// Merge, rebase or cherry-pick stopped on conflicts.
+    private static func conflicts(_ f: Failure) -> ProblemReport? {
+        guard f.contains("conflict"),
+              f.contains("merge conflict", "automatic merge failed", "could not apply", "after resolving") else { return nil }
+        let files = f.text.components(separatedBy: "\n").compactMap { line -> String? in
+            guard let range = line.range(of: "Merge conflict in ") else { return nil }
+            return String(line[range.upperBound...]).trimmingCharacters(in: .whitespaces)
         }
+        let model = f.model
+        return ProblemReport(
+            symbol: "arrow.triangle.merge",
+            title: "Conflicts need your attention",
+            message: files.isEmpty ? "Some files were changed on both sides." : "These files were changed on both sides:",
+            files: files,
+            hint: "Resolve them in File Status, stage them and commit (or continue the rebase). You can also abort and go back.",
+            details: f.text,
+            actions: [
+                ProblemAction(title: "Abort", style: .destructive) { model.abortOperation() },
+                ProblemAction(title: "Resolve Conflicts", style: .prominent) { model.sidebarSelection = .fileStatus }
+            ])
+    }
 
-        if lower.contains("permission denied (publickey)") || lower.contains("authentication failed")
-            || lower.contains("could not read username") || lower.contains("repository not found")
-            || lower.contains("could not read from remote repository") {
-            return ProblemReport(
-                symbol: "lock.fill",
-                title: "Can't connect to the remote",
-                message: "Git could not sign in to the remote repository, or you don't have access to it.",
-                hint: "Check your SSH key or credentials by running `git fetch` in Terminal for this repository.",
-                details: text,
-                actions: retry.map { [ProblemAction(title: "Try Again", style: .prominent, run: $0)] } ?? [])
-        }
+    /// Push rejected because the remote moved on.
+    private static func pushRejected(_ f: Failure) -> ProblemReport? {
+        guard f.contains("[rejected]", "non-fast-forward", "fetch first", "updates were rejected") else { return nil }
+        let model = f.model
+        return ProblemReport(
+            symbol: "arrow.up.circle.fill",
+            title: "Push was rejected",
+            message: "The remote branch has commits that you don't have yet.",
+            hint: "Pull first to combine both, then push again.",
+            details: f.text,
+            actions: [ProblemAction(title: "Pull…", style: .prominent) { model.sheet = .pull }])
+    }
 
-        if lower.contains("index.lock") {
-            return ProblemReport(
-                symbol: "hourglass",
-                title: "Another Git process is busy",
-                message: "Git is already working in this repository, for example in Terminal or your editor.",
-                hint: "Wait a moment and try again. If nothing is running, remove .git/index.lock.",
-                details: text,
-                actions: retry.map { [ProblemAction(title: "Try Again", style: .prominent, run: $0)] } ?? [])
-        }
+    private static func noUpstream(_ f: Failure) -> ProblemReport? {
+        guard f.contains("has no upstream branch", "no tracking information") else { return nil }
+        let model = f.model
+        return ProblemReport(
+            symbol: "arrow.triangle.branch",
+            title: "This branch isn't linked to a remote branch",
+            message: "Git doesn't know which remote branch to use.",
+            hint: "Push the branch once with “Track” enabled; after that pull and push work directly.",
+            details: f.text,
+            actions: [ProblemAction(title: "Push…", style: .prominent) { model.sheet = .push }])
+    }
 
-        if lower.contains("not fully merged") {
-            return ProblemReport(
-                symbol: "arrow.triangle.branch",
-                title: "This branch isn't fully merged",
-                message: "Deleting it would lose commits that exist nowhere else.",
-                details: text)
-        }
+    private static func cannotConnect(_ f: Failure) -> ProblemReport? {
+        guard f.contains("permission denied (publickey)", "authentication failed", "could not read username",
+                         "repository not found", "could not read from remote repository") else { return nil }
+        return ProblemReport(
+            symbol: "lock.fill",
+            title: "Can't connect to the remote",
+            message: "Git could not sign in to the remote repository, or you don't have access to it.",
+            hint: "Check your SSH key or credentials by running `git fetch` in Terminal for this repository.",
+            details: f.text,
+            actions: f.tryAgain)
+    }
 
-        // Fallback: show git's own sentence, without the "error:/fatal:" noise.
-        let lines = text.components(separatedBy: "\n")
+    private static func gitBusy(_ f: Failure) -> ProblemReport? {
+        guard f.contains("index.lock") else { return nil }
+        return ProblemReport(
+            symbol: "hourglass",
+            title: "Another Git process is busy",
+            message: "Git is already working in this repository, for example in Terminal or your editor.",
+            hint: "Wait a moment and try again. If nothing is running, remove .git/index.lock.",
+            details: f.text,
+            actions: f.tryAgain)
+    }
+
+    private static func branchNotMerged(_ f: Failure) -> ProblemReport? {
+        guard f.contains("not fully merged") else { return nil }
+        return ProblemReport(
+            symbol: "arrow.triangle.branch",
+            title: "This branch isn't fully merged",
+            message: "Deleting it would lose commits that exist nowhere else.",
+            details: f.text)
+    }
+
+    /// Shows git's own sentence, without the "error:/fatal:" noise.
+    private static func fallback(_ f: Failure) -> ProblemReport {
+        let lines = f.text.components(separatedBy: "\n")
             .map { line -> String in
-                var l = line.trimmingCharacters(in: .whitespaces)
-                for prefix in ["error: ", "fatal: ", "hint: ", "warning: "] where l.lowercased().hasPrefix(prefix) {
-                    l = String(l.dropFirst(prefix.count))
+                var cleaned = line.trimmingCharacters(in: .whitespaces)
+                for prefix in ["error: ", "fatal: ", "hint: ", "warning: "] where cleaned.lowercased().hasPrefix(prefix) {
+                    cleaned = String(cleaned.dropFirst(prefix.count))
                 }
-                return l
+                return cleaned
             }
             .filter { !$0.isEmpty }
         let first = lines.first.map { $0.prefix(1).uppercased() + $0.dropFirst() } ?? "Something went wrong."
         return ProblemReport(
-            title: action.isEmpty ? "Something went wrong" : "\(action) didn't work",
+            title: f.action.isEmpty ? "Something went wrong" : "\(f.action) didn't work",
             message: first,
-            files: indented,
-            details: text,
-            actions: retry.map { [ProblemAction(title: "Try Again", run: $0)] } ?? [])
+            files: f.indentedLines,
+            details: f.text,
+            actions: f.retry.map { [ProblemAction(title: "Try Again", run: $0)] } ?? [])
     }
 }
 

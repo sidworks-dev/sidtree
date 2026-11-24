@@ -5,7 +5,7 @@ struct DiffView: View {
     let file: FileChange?
     let diff: FileDiff?
     let context: DiffContext
-    var onHunk: ((RepoModel.HunkAction, DiffHunk) -> Void)? = nil
+    var onHunk: ((RepoModel.HunkAction, DiffHunk) -> Void)?
 
     @State private var forceLarge = false
     static let font = NSFont.monospacedSystemFont(ofSize: 11.5, weight: .regular)
@@ -122,8 +122,10 @@ private struct DiffBody: View {
                         }
                     }
                 }
-                .frame(width: contentWidth, alignment: .leading)
                 .padding(.bottom, 8)
+                // Short diffs start at the top instead of being centred in the scroll view.
+                .frame(width: contentWidth, alignment: .leading)
+                .frame(minHeight: geo.size.height, alignment: .top)
             }
         }
     }

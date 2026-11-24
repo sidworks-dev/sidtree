@@ -5,9 +5,9 @@ import Foundation
 final class RepoWatcher {
     struct Change: OptionSet {
         let rawValue: Int
-        static let workingCopy = Change(rawValue: 1)
-        static let refs = Change(rawValue: 2)
-        static let ignoreRules = Change(rawValue: 4)
+        static let workingCopy = Self(rawValue: 1)
+        static let refs = Self(rawValue: 2)
+        static let ignoreRules = Self(rawValue: 4)
     }
 
     /// Ignored directories ("var/cache/") and files, relative to the root. Events inside them are dropped,

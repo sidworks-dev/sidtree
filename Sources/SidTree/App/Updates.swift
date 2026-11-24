@@ -11,7 +11,7 @@ struct Version: Comparable, CustomStringConvertible {
         parts = trimmed.split(separator: ".").map { Int($0.prefix { $0.isNumber }) ?? 0 }
     }
 
-    static func < (a: Version, b: Version) -> Bool {
+    static func < (a: Self, b: Self) -> Bool {
         for i in 0..<max(a.parts.count, b.parts.count) {
             let x = i < a.parts.count ? a.parts[i] : 0
             let y = i < b.parts.count ? b.parts[i] : 0
@@ -20,10 +20,10 @@ struct Version: Comparable, CustomStringConvertible {
         return false
     }
 
-    static func == (a: Version, b: Version) -> Bool { !(a < b) && !(b < a) }
+    static func == (a: Self, b: Self) -> Bool { !(a < b) && !(b < a) }
     var description: String { parts.map(String.init).joined(separator: ".") }
 
-    static let current = Version(AppInfo.version)
+    static let current = Self(AppInfo.version)
 }
 
 // MARK: - Changelog
@@ -192,7 +192,13 @@ struct ReleaseInfo: Equatable {
 final class UpdateChecker: ObservableObject {
     static let shared = UpdateChecker()
     static let repo = "sidworks-dev/sidtree"
-    static let repoURL = URL(string: "https://github.com/\(repo)")!
+    static let repoURL = githubURL("https://github.com/\(repo)")
+
+    /// URLs below are compile-time constants; a malformed one is a programming error.
+    private static func githubURL(_ string: String) -> URL {
+        guard let url = URL(string: string) else { preconditionFailure("Invalid URL: \(string)") }
+        return url
+    }
 
     @Published var available: ReleaseInfo?
     @Published var latest: ReleaseInfo?
@@ -227,7 +233,7 @@ final class UpdateChecker: ObservableObject {
         }
         timer?.invalidate()
         timer = Timer.scheduledTimer(withTimeInterval: 3600, repeats: true) { _ in
-            Task { @MainActor in UpdateChecker.shared.checkIfDue() }
+            Task { @MainActor in Self.shared.checkIfDue() }
         }
     }
 
@@ -271,7 +277,7 @@ final class UpdateChecker: ObservableObject {
             }
             return info
         }
-        var request = URLRequest(url: URL(string: "https://api.github.com/repos/\(Self.repo)/releases/latest")!)
+        var request = URLRequest(url: Self.githubURL("https://api.github.com/repos/\(Self.repo)/releases/latest"))
         request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
         request.timeoutInterval = 15
         if let (data, response) = try? await URLSession.shared.data(for: request),

@@ -29,7 +29,7 @@ struct SheetHost: View {
 struct SheetContainer<Content: View>: View {
     let symbol: String
     let title: String
-    var subtitle: String? = nil
+    var subtitle: String?
     let confirmTitle: String
     var confirmEnabled = true
     var destructive = false
@@ -629,7 +629,7 @@ struct EditTagSheet: View {
             if !model.remotes.isEmpty {
                 VStack(alignment: .leading, spacing: 4) {
                     Toggle("Also update the tag on \(remote)", isOn: $updateRemote).toggleStyle(.checkbox).font(.system(size: 12))
-                    Text(loading ? "Checking \(remote)…" : (onRemote ? "This tag exists on \(remote). Others who already fetched it keep the old version until they fetch again." : "This tag is not on \(remote) yet."))
+                    Text(remoteStatus)
                         .font(.system(size: 11)).foregroundStyle(Theme.secondaryText)
                 }
             }
@@ -647,6 +647,14 @@ struct EditTagSheet: View {
             }
             loading = false
         }
+    }
+
+    private var remoteStatus: String {
+        if loading { return "Checking \(remote)…" }
+        if onRemote {
+            return "This tag exists on \(remote). Others who already fetched it keep the old version until they fetch again."
+        }
+        return "This tag is not on \(remote) yet."
     }
 
     private func save() {

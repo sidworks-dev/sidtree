@@ -141,7 +141,11 @@ struct GitService {
                 let hostname = text.split(separator: "\n")
                     .first { $0.hasPrefix("hostname ") }
                     .map { String($0.dropFirst("hostname ".count)).trimmingCharacters(in: .whitespaces) }
-                cont.resume(returning: hostname?.isEmpty == false ? hostname! : alias)
+                if let hostname, !hostname.isEmpty {
+                    cont.resume(returning: hostname)
+                } else {
+                    cont.resume(returning: alias)
+                }
             }
         }
     }
@@ -194,7 +198,10 @@ struct GitService {
     /// When the parents are already known (from the log) the message and file list load in parallel.
     func commitDetail(_ hash: String, knownParents: [String]? = nil) async -> CommitDetail? {
         async let show = run(["show", "-s", "--format=%H%x1f%P%x1f%an%x1f%ae%x1f%at%x1f%cn%x1f%ce%x1f%B", hash])
-        async let prefetched: [FileChange]? = knownParents == nil ? nil : changedFiles(hash, parents: knownParents!)
+        async let prefetched: [FileChange]? = {
+            guard let knownParents else { return nil }
+            return await changedFiles(hash, parents: knownParents)
+        }()
         let r = await show
         guard r.status == 0 else { return nil }
         let f = r.output.split(separator: Parsers.fieldSep, maxSplits: 7, omittingEmptySubsequences: false).map(String.init)
@@ -413,8 +420,7 @@ struct GitService {
 
     func merge(_ ref: String, noFF: Bool, commit: Bool, squash: Bool) async throws {
         var args = ["merge"]
-        if squash { args.append("--squash") }
-        else {
+        if squash { args.append("--squash") } else {
             if noFF { args.append("--no-ff") }
             if !commit { args += ["--no-commit", "--no-ff"] }
         }

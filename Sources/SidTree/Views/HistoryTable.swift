@@ -29,7 +29,7 @@ struct HistoryTable: NSViewRepresentable {
             ("description", "Description", 560.0, 160.0),
             ("date", "Date", 150.0, 80.0),
             ("author", "Author", 150.0, 60.0),
-            ("hash", "Commit", 80.0, 50.0),
+            ("hash", "Commit", 80.0, 50.0)
         ] {
             let col = NSTableColumn(identifier: NSUserInterfaceItemIdentifier(id))
             col.title = title
@@ -323,7 +323,7 @@ final class ClosureMenuItem: NSMenuItem {
         target = self
     }
 
-    required init(coder: NSCoder) { fatalError() }
+    required init(coder: NSCoder) { fatalError("ClosureMenuItem is created in code only") }
 
     @objc private func fire() { handler() }
 }
@@ -377,7 +377,7 @@ final class TextCellView: NSTableCellView {
         NSLayoutConstraint.activate([
             label.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 8),
             label.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -4),
-            label.centerYAnchor.constraint(equalTo: centerYAnchor),
+            label.centerYAnchor.constraint(equalTo: centerYAnchor)
         ])
     }
 
@@ -436,7 +436,6 @@ final class GraphCellView: NSTableCellView {
 
         let cx = x(row.node)
         let color = GraphPalette.color(row.color)
-        let selected = false
         if isWorkingCopy {
             let r: CGFloat = 5
             let rect = CGRect(x: cx - r, y: mid - r, width: r * 2, height: r * 2)
@@ -450,7 +449,7 @@ final class GraphCellView: NSTableCellView {
         } else if isHead {
             let r: CGFloat = 5.5
             let rect = CGRect(x: cx - r, y: mid - r, width: r * 2, height: r * 2)
-            ctx.setFillColor((selected ? NSColor.white : Theme.nsCard).cgColor)
+            ctx.setFillColor(Theme.nsCard.cgColor)
             ctx.fillEllipse(in: rect)
             ctx.setStrokeColor(color.cgColor)
             ctx.setLineWidth(2.5)
@@ -463,7 +462,7 @@ final class GraphCellView: NSTableCellView {
             let rect = CGRect(x: cx - r, y: mid - r, width: r * 2, height: r * 2)
             ctx.setFillColor(color.cgColor)
             ctx.fillEllipse(in: rect)
-            ctx.setStrokeColor((selected ? NSColor.white : Theme.nsCard).withAlphaComponent(0.9).cgColor)
+            ctx.setStrokeColor(Theme.nsCard.withAlphaComponent(0.9).cgColor)
             ctx.setLineWidth(1.25)
             ctx.strokeEllipse(in: rect.insetBy(dx: -0.6, dy: -0.6))
         }
@@ -513,7 +512,6 @@ final class DescriptionCellView: NSTableCellView {
 
     override func draw(_ dirtyRect: NSRect) {
         guard let commit else { return }
-        let selected = false
         let h = bounds.height
         var x: CGFloat = 6
 
@@ -533,11 +531,6 @@ final class DescriptionCellView: NSTableCellView {
             let path = NSBezierPath(roundedRect: rect, xRadius: 4.5, yRadius: 4.5)
             bg.setFill()
             path.fill()
-            if selected {
-                NSColor.white.withAlphaComponent(0.75).setStroke()
-                path.lineWidth = 1
-                path.stroke()
-            }
             if let symbol, let img = Self.badgeImage(symbol) {
                 let s = img.size
                 img.draw(in: NSRect(x: rect.minX + 6, y: rect.midY - s.height / 2, width: s.width, height: s.height))
@@ -567,7 +560,9 @@ final class DescriptionCellView: NSTableCellView {
         let lane = GraphPalette.color(color)
         switch ref.kind {
         case .head: return (NSColor.systemGray, "location.fill")
-        case .localBranch: return (ref.isCurrent ? lane : lane.blended(withFraction: 0.15, of: .black) ?? lane, ref.isCurrent ? "checkmark" : "arrow.triangle.branch")
+        case .localBranch:
+            let background = ref.isCurrent ? lane : lane.blended(withFraction: 0.15, of: .black) ?? lane
+            return (background, ref.isCurrent ? "checkmark" : "arrow.triangle.branch")
         case .remoteBranch: return (lane.withAlphaComponent(0.62), "cloud.fill")
         case .tag: return (NSColor(srgbRed: 0.45, green: 0.45, blue: 0.50, alpha: 1), "tag.fill")
         }

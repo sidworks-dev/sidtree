@@ -85,7 +85,7 @@ struct Card<Content: View>: View {
 
 struct CardHeader<Trailing: View>: View {
     let title: String
-    var subtitle: String? = nil
+    var subtitle: String?
     @ViewBuilder var trailing: Trailing
 
     var body: some View {
@@ -207,7 +207,7 @@ struct FileStatusIcon: View {
         case .added: return ("plus", Theme.green, Theme.greenSoft)
         case .deleted: return ("minus", Theme.red, Theme.redSoft)
         case .renamed, .copied: return ("arrow.right", Theme.blue, Theme.blueSoft)
-        case .untracked: return ("questionmark", Theme.secondaryText, Theme.graySoft)
+        case .untracked: return ("plus", Theme.green, Theme.greenSoft)
         case .conflicted: return ("exclamationmark", .white, Theme.red)
         case .unknown: return ("circle", Theme.secondaryText, Theme.graySoft)
         }
@@ -221,7 +221,7 @@ struct FileStatusIcon: View {
         case .deleted: return "Deleted"
         case .renamed: return "Renamed"
         case .copied: return "Copied"
-        case .untracked: return "Untracked"
+        case .untracked: return "New file (not tracked yet)"
         case .conflicted: return "Conflicted"
         case .unknown: return "Changed"
         }

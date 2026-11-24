@@ -21,7 +21,9 @@ if [ ! -f "$KEYCHAIN" ]; then
     security unlock-keychain -p "$KC_PASS" "$KEYCHAIN"
     security import "$RUNNER_TEMP/cert.p12" -P "$MACOS_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN"
     security set-key-partition-list -S apple-tool:,apple: -k "$KC_PASS" "$KEYCHAIN" >/dev/null
-    security list-keychains -d user -s "$KEYCHAIN" $(security list-keychains -d user | tr -d '"')
+    EXISTING=()
+    while IFS= read -r chain; do EXISTING+=("$chain"); done < <(security list-keychains -d user | tr -d '" ')
+    security list-keychains -d user -s "$KEYCHAIN" "${EXISTING[@]}"
     rm -f "$RUNNER_TEMP/cert.p12"
 fi
 IDENTITY="$(security find-identity -v -p codesigning "$KEYCHAIN" | grep "Developer ID Application" | head -1 | awk -F'"' '{print $2}')"

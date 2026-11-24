@@ -8,6 +8,11 @@ struct FileStatusView: View {
     @AppStorage("split.status.commit") private var commitSplit = 0.78
     @State private var stagedSelection: Set<String> = []
     @State private var unstagedSelection: Set<String> = []
+    /// The list ⌘A applies to: the one clicked last.
+    @State private var activeList = ActiveList.unstaged
+    @State private var keyMonitor: Any?
+
+    private enum ActiveList { case staged, unstaged }
     @State private var dropOnStaged = false
     @State private var dropOnUnstaged = false
 
@@ -31,7 +36,7 @@ struct FileStatusView: View {
                     }
                 } second: {
                     DiffView(file: model.selectedStatusFile, diff: model.statusDiff,
-                             context: model.selectedStatusFile.map { $0.staged ? .staged : ($0.kind == .untracked || $0.kind == .conflicted ? .readOnly : .unstaged) } ?? .readOnly,
+                             context: diffContext,
                              onHunk: { action, hunk in
                                  if let diff = model.statusDiff { model.hunkAction(action, hunk: hunk, in: diff) }
                              })
@@ -41,6 +46,11 @@ struct FileStatusView: View {
             }
         }
         .padding(16)
+        .onAppear(perform: installSelectAllShortcut)
+        .onDisappear {
+            if let keyMonitor { NSEvent.removeMonitor(keyMonitor) }
+            keyMonitor = nil
+        }
     }
 
     // MARK: Cards
@@ -59,6 +69,7 @@ struct FileStatusView: View {
                     FileListView(files: model.status.staged, focused: model.selectedStatusFile, selection: $stagedSelection,
                                  checkbox: true,
                                  onSelect: { file in
+                                     activeList = .staged
                                      unstagedSelection = []
                                      model.selectStatusFile(file)
                                  },
@@ -93,6 +104,7 @@ struct FileStatusView: View {
                     FileListView(files: model.status.unstaged, focused: model.selectedStatusFile, selection: $unstagedSelection,
                                  checkbox: false,
                                  onSelect: { file in
+                                     activeList = .unstaged
                                      stagedSelection = []
                                      model.selectStatusFile(file)
                                  },
@@ -140,6 +152,36 @@ struct FileStatusView: View {
                     try text.write(to: url, atomically: true, encoding: .utf8)
                 }
             }
+        }
+    }
+
+    /// Which hunk actions the diff offers for the selected file.
+    private var diffContext: DiffContext {
+        guard let file = model.selectedStatusFile else { return .readOnly }
+        if file.staged { return .staged }
+        return file.kind == .untracked || file.kind == .conflicted ? .readOnly : .unstaged
+    }
+
+    /// ⌘A selects all files of the active list, unless a text field is being edited (it keeps its own ⌘A).
+    /// Handled at key-event level because the standard Edit → Select All menu item would win otherwise.
+    private func installSelectAllShortcut() {
+        guard keyMonitor == nil else { return }
+        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            guard event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command,
+                  event.charactersIgnoringModifiers?.lowercased() == "a",
+                  event.window?.isKeyWindow == true,
+                  !(event.window?.firstResponder is NSText) else { return event }
+            let staged = model.status.staged, unstaged = model.status.unstaged
+            if activeList == .staged && !staged.isEmpty || unstaged.isEmpty {
+                guard !staged.isEmpty else { return event }
+                activeList = .staged
+                unstagedSelection = []
+                stagedSelection = Set(staged.map(\.id))
+            } else {
+                stagedSelection = []
+                unstagedSelection = Set(unstaged.map(\.id))
+            }
+            return nil
         }
     }
 
@@ -258,7 +300,6 @@ struct CommitBox: View {
                             .foregroundStyle(summary.count > 72 ? Theme.orange : Theme.secondaryText)
                             .help("Summary length (keep under 72)")
                     }
-                    Text("\(model.status.staged.count) staged").font(.system(size: 11.5)).foregroundStyle(Theme.secondaryText)
                     CommitActionControl(model: model)
                 }
                 .font(.system(size: 12))
@@ -270,7 +311,6 @@ struct CommitBox: View {
         .onChange(of: model.commitFocusToken) { _, _ in focused = true }
         .onAppear { if model.commitFocusToken > 0 { focused = true } }
     }
-
 }
 
 /// The main button performs the remembered action; the arrow changes it without committing.

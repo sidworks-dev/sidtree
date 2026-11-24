@@ -230,7 +230,10 @@ enum DebugSnapshot {
             }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                 if ProcessInfo.processInfo.environment["SIDTREE_DEBUG_WINDOWS"] != nil {
-                    for w in NSApp.windows { FileHandle.standardError.write(Data("window id=\(w.identifier?.rawValue ?? "-") title=\(w.title) visible=\(w.isVisible)\n".utf8)) }
+                    for w in NSApp.windows {
+                        let line = "window id=\(w.identifier?.rawValue ?? "-") title=\(w.title) visible=\(w.isVisible)\n"
+                        FileHandle.standardError.write(Data(line.utf8))
+                    }
                 }
                 guard let main = NSApp.windows.first(where: { $0.isVisible && $0.contentView != nil && $0.frame.width > 600 }),
                       case let window = main.attachedSheet ?? main,

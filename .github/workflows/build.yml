@@ -53,8 +53,8 @@ jobs:
             echo "Release v$VERSION already exists; building only."
           fi
 
-      - name: Build
-        run: ./scripts/build.sh release
+      - name: Build (compiler warnings fail the release)
+        run: STRICT=1 ./scripts/build.sh release
 
       - name: Sign and notarize app
         if: steps.version.outputs.exists != 'true' && env.MACOS_CERTIFICATE != ''

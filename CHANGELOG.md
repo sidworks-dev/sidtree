@@ -4,6 +4,19 @@ All notable changes to SidTree. Newest first; the app shows these notes in **Wha
 
 ## [Unreleased]
 
+## [0.4.2] - 2026-11-24
+
+### Fixed
+- ⌘A now selects all files in the staged or unstaged list
+- Short diffs start at the top of the diff view
+- The logo is sharp at every size
+
+### Changed
+- AI commit messages describe the overall purpose when many files change, without vague words
+- Removed the "0 staged" label next to the Commit button
+- New (untracked) files show a + instead of a ?
+- Code quality checks: no compiler warnings, SwiftLint and ShellCheck, enforced in CI
+
 ## [0.4.1] - 2026-11-24
 
 ### Added
