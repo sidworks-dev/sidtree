@@ -4,16 +4,16 @@
 
 # SidTree
 
-**A fast, calm Git client for macOS.**
+**The Git client for macOS that is built for speed.**
 
-Everything you used SourceTree for: history, staging, branches, pull and push.<br>
-Native, quick to open and easy on the eyes.
+History, staging, branches, pull and push, without the waiting.<br>
+Native, instant on large repositories and easy on the eyes.
 
 [![macOS](https://img.shields.io/badge/macOS-14%2B-7c3aed?labelColor=24292f)](#install)
 [![Apple Silicon and Intel](https://img.shields.io/badge/Apple_Silicon_%26_Intel-universal-7c3aed?labelColor=24292f)](#install)
 [![Swift](https://img.shields.io/badge/Swift-SwiftUI_%2B_AppKit-f05138?labelColor=24292f)](#building-from-source)
 
-[Why](#why-sidtree) · [Features](#what-you-get) · [Install](#install) · [AI commit messages](#ai-commit-messages) · [Updates](#updates) · [Shortcuts](#keyboard-shortcuts)
+[Why](#why-sidtree) · [Speed](#built-for-speed) · [Features](#what-you-get) · [Install](#install) · [AI commit messages](#ai-commit-messages) · [Updates](#updates) · [Shortcuts](#keyboard-shortcuts)
 
 </div>
 
@@ -23,9 +23,27 @@ Native, quick to open and easy on the eyes.
 
 ## Why SidTree?
 
-SourceTree does a lot, but it takes its time: opening a large repository, switching branches, loading a diff. SidTree is built for the moments in between. It opens a repository with tens of thousands of commits in a fraction of a second, keeps up with your editor while you work, and puts the actions you use every day one click away.
+A Git client is something you look at all day, so every pause adds up: opening a repository, switching branches, waiting for a diff. SidTree is designed around performance first. It opens a repository with tens of thousands of commits in a fraction of a second, keeps up with your editor while you work, and puts the actions you use every day one click away.
 
 It is a native Mac app that talks to the Git already installed on your Mac. No account, no background service, nothing to configure.
+
+## Built for speed
+
+Measured on an Apple Silicon Mac with a repository of 40,000 commits:
+
+| | |
+| --- | --- |
+| History on screen after opening | **~0.1 s** |
+| Reading 40,000 commits | **~15 ms** |
+| Drawing the commit graph | **~20 ms** |
+| Staging a file | **instant**, confirmed by Git in the background |
+
+How it stays fast:
+
+- **Native, not a web view.** SwiftUI and AppKit, with the history list drawn directly for smooth scrolling through thousands of commits.
+- **First things first.** The newest commits appear immediately; the rest of the history, branches and status follow in parallel.
+- **No unnecessary work.** Nothing is redrawn when nothing changed, and files written to ignored folders such as caches and build output never trigger a refresh.
+- **Lets Git do less.** SidTree maintains Git's own commit index, which makes the history of large repositories load up to 10× faster.
 
 ## What you get
 
