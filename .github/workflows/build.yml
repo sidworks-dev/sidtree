@@ -31,11 +31,14 @@ jobs:
             [ "${GITHUB_REF_NAME#v}" = "$VERSION" ] || { echo "Tag $GITHUB_REF_NAME does not match VERSION $VERSION"; exit 1; }
           fi
           ditto -c -k --keepParent build/SidTree.app "build/SidTree-$VERSION.zip"
+          ./scripts/make-dmg.sh
 
       - uses: actions/upload-artifact@v6
         with:
           name: SidTree
-          path: build/SidTree-*.zip
+          path: |
+            build/SidTree-*.zip
+            build/SidTree-*.dmg
           retention-days: 14
 
       - name: Publish release
@@ -50,5 +53,5 @@ jobs:
             on && /^## / { exit }
             on { print }
           ' CHANGELOG.md > notes.md
-          gh release create "$GITHUB_REF_NAME" build/SidTree-*.zip \
+          gh release create "$GITHUB_REF_NAME" build/SidTree-*.dmg build/SidTree-*.zip \
             --title "SidTree $VERSION" --notes-file notes.md

@@ -102,8 +102,8 @@ struct RepoView: View {
         .sheet(item: $model.sheet) { kind in
             SheetHost(model: model, kind: kind)
         }
-        .alert(item: $model.error) { err in
-            Alert(title: Text("Git error"), message: Text(err.message), dismissButton: .default(Text("OK")))
+        .sheet(item: $model.problem) { report in
+            ProblemView(report: report)
         }
         .confirmationDialog(model.confirm?.title ?? "", isPresented: Binding(get: { model.confirm != nil }, set: { if !$0 { model.confirm = nil } }),
                             presenting: model.confirm) { req in

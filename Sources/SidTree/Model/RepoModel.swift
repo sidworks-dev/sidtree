@@ -117,7 +117,17 @@ final class RepoModel {
     var sidebarSelection: SidebarItem? = .history { didSet { sidebarChanged() } }
     var sheet: SheetKind?
     var confirm: ConfirmRequest?
-    var error: GitError?
+    /// The problem currently shown to the user.
+    var problem: ProblemReport?
+
+    /// Setting an error shows it as a readable problem report.
+    var error: GitError? {
+        get { nil }
+        set {
+            guard let e = newValue else { return }
+            problem = ProblemInterpreter.report(for: e.message, label: e.command, model: self, retry: nil, stashAndRetry: nil)
+        }
+    }
     var activity: String?
     var toast: String?
     var sidebarFilter = ""
@@ -166,6 +176,10 @@ final class RepoModel {
         if let view = ProcessInfo.processInfo.environment["SIDTREE_DEBUG_VIEW"] {
             Task {
                 try? await Task.sleep(nanoseconds: 1_500_000_000)
+                if let branch = ProcessInfo.processInfo.environment["SIDTREE_DEBUG_CHECKOUT"] {
+                    checkout(localName: branch)
+                    return
+                }
                 let wanted = ProcessInfo.processInfo.environment["SIDTREE_DEBUG_SELECT"] ?? ""
                 if view == "status" {
                     sidebarSelection = .fileStatus
@@ -409,10 +423,18 @@ final class RepoModel {
             do {
                 try await op()
                 if let success { self.showToast(success) }
-            } catch let e as GitError {
-                self.error = e
             } catch {
-                self.error = GitError(command: label, message: error.localizedDescription)
+                let message = (error as? GitError)?.message ?? error.localizedDescription
+                self.problem = ProblemInterpreter.report(
+                    for: message, label: label, model: self,
+                    retry: { [unowned self] in self.perform(label, success: success, refresh: refresh, op) },
+                    stashAndRetry: { [unowned self] in
+                        self.perform("Stashing changes…", success: success, refresh: refresh) {
+                            try await self.git.stash(message: "SidTree: before \(label.replacingOccurrences(of: "…", with: "").lowercased())",
+                                                     keepIndex: false, includeUntracked: true)
+                            try await op()
+                        }
+                    })
             }
             self.pendingChange = []
             if refresh { await self.refreshAll() }
@@ -843,7 +865,10 @@ final class RepoModel {
                 return
             } catch {
                 guard !Task.isCancelled else { return }
-                self.error = GitError(command: "generate commit message", message: error.localizedDescription)
+                self.problem = ProblemReport(symbol: "sparkles", title: "Couldn't generate a commit message",
+                                             message: error.localizedDescription.components(separatedBy: "\n").first ?? "",
+                                             hint: "Check Settings → AI, or try another model.",
+                                             details: error.localizedDescription)
             }
         }
     }

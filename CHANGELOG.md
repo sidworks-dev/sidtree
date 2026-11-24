@@ -2,6 +2,15 @@
 
 All notable changes to SidTree. Newest first; the app shows these notes in **What's New** after an update.
 
+## [0.1.1] - 2026-11-24
+
+### Added
+- Clear error dialogs that explain what went wrong, list the files involved and offer the next step, such as **Stash & Switch** when local changes block a checkout
+- Disk image installer: open the `.dmg` and drag SidTree to Applications
+
+### Changed
+- AI commit messages are one simple line by default, are prepared in the background and can switch model from the Generate menu
+
 ## [0.1.0] - 2026-11-24
 
 ### Added

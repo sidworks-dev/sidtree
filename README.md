@@ -67,9 +67,9 @@ _The start screen shows every recent repository with its branch, local changes a
 
 ## Install
 
-1. Download `SidTree-x.y.z.zip` from the latest [release](https://github.com/sidworks-dev/sidtree/releases).
-2. Unzip it and drag **SidTree** into your **Applications** folder.
-3. Open it. The first time, macOS asks whether you trust the app: open **System Settings → Privacy & Security** and choose **Open Anyway**.
+1. Download `SidTree-x.y.z.dmg` from the latest [release](https://github.com/sidworks-dev/sidtree/releases).
+2. Open it and drag **SidTree** onto the **Applications** folder.
+3. Open SidTree from Applications. The first time, macOS asks whether you trust the app: open **System Settings → Privacy & Security** and choose **Open Anyway**.
 
 Open a repository with **File → Open** (⌘O), pick one from the start screen, or drop a folder on the app icon.
 
