@@ -9,7 +9,7 @@ grep -q "^## \[$V\]" CHANGELOG.md || { echo "CHANGELOG.md has no '## [$V]' secti
 [ -z "$(git status --porcelain)" ] || { echo "Working tree not clean"; exit 1; }
 echo "$V" > VERSION
 git add VERSION
-git commit -m "Release $V"
+git diff --cached --quiet || git commit -m "Release $V"
 git tag "v$V"
 git push origin HEAD "v$V"
 echo "✓ Tagged v$V — GitHub Actions is building the release."
