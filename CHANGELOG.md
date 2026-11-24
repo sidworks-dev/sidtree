@@ -4,6 +4,11 @@ All notable changes to SidTree. Newest first; the app shows these notes in **Wha
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-11-24
+
+### Changed
+- File lists show repository-relative paths in one line, with the directory before the filename, like SourceTree
+
 ## [0.5.0] - 2026-11-24
 
 ### Added

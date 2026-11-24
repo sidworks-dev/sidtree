@@ -133,19 +133,19 @@ struct FileRow: View {
                 }
                 FileStatusIcon(kind: file.kind)
                 HStack(spacing: 5) {
-                    Text(file.fileName)
+                    Text(file.path)
                         .font(.system(size: 12.5, weight: focused ? .semibold : .regular))
                         .foregroundStyle(Theme.text)
                         .lineLimit(1)
+                        .truncationMode(.middle)
                         .layoutPriority(1)
                     if let orig = file.originalPath {
-                        Text("← \((orig as NSString).lastPathComponent)").font(.system(size: 11)).foregroundStyle(Theme.secondaryText).lineLimit(1)
+                        Text("← \(orig)")
+                            .font(.system(size: 11))
+                            .foregroundStyle(Theme.secondaryText)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
                     }
-                    Text(file.directory)
-                        .font(.system(size: 11))
-                        .foregroundStyle(Theme.secondaryText)
-                        .lineLimit(1)
-                        .truncationMode(.head)
                 }
             }
             .anchorPreference(key: FileRowContentBounds.self, value: .bounds) { [file.id: $0] }
