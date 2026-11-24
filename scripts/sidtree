@@ -1,0 +1,3 @@
+#!/bin/bash
+# Open a repository in SidTree from the terminal:  sidtree [path]
+open -a SidTree "$(cd "${1:-.}" && pwd)"

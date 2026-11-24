@@ -1,0 +1,54 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build
+        run: ./scripts/build.sh release
+
+      - name: Package
+        run: |
+          VERSION="$(cat VERSION)"
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            [ "${GITHUB_REF_NAME#v}" = "$VERSION" ] || { echo "Tag $GITHUB_REF_NAME does not match VERSION $VERSION"; exit 1; }
+          fi
+          ditto -c -k --keepParent build/SidTree.app "build/SidTree-$VERSION.zip"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SidTree
+          path: build/SidTree-*.zip
+          retention-days: 14
+
+      - name: Publish release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          # Release notes = this version's section of CHANGELOG.md
+          awk -v v="$VERSION" '
+            $0 ~ "^## \\[" v "\\]" { on = 1; next }
+            on && /^## / { exit }
+            on { print }
+          ' CHANGELOG.md > notes.md
+          gh release create "$GITHUB_REF_NAME" build/SidTree-*.zip \
+            --title "SidTree $VERSION" --notes-file notes.md
