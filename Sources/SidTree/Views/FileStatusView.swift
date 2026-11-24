@@ -64,7 +64,8 @@ struct FileStatusView: View {
                                  },
                                  onToggle: { model.unstage([$0]) },
                                  onDoubleClick: { model.unstage([$0]) },
-                                 dragKind: "staged") { file in
+                                 dragKind: "staged",
+                                 onToggleSelection: { model.unstage($0) }) { file in
                         let targets = selected(file, in: model.status.staged, selection: stagedSelection)
                         Button(targets.count > 1 ? "Unstage \(targets.count) Files" : "Unstage") { model.unstage(targets) }
                         Divider()
@@ -97,7 +98,8 @@ struct FileStatusView: View {
                                  },
                                  onToggle: { model.stage([$0]) },
                                  onDoubleClick: { model.stage([$0]) },
-                                 dragKind: "unstaged") { file in
+                                 dragKind: "unstaged",
+                                 onToggleSelection: { model.stage($0) }) { file in
                         let targets = selected(file, in: model.status.unstaged, selection: unstagedSelection)
                         Button(targets.count > 1 ? "Stage \(targets.count) Files" : "Stage") { model.stage(targets) }
                         if file.kind == .conflicted {
@@ -277,7 +279,7 @@ struct CommitActionControl: View {
     @State private var hoverMain = false
     @State private var hoverMenu = false
 
-    private var disabled: Bool { !model.canCommit || (model.pushAfterCommit && model.currentBranch == nil) }
+    private var disabled: Bool { model.committing || !model.canCommit || (model.pushAfterCommit && model.currentBranch == nil) }
     private var title: String {
         if model.amend { return model.pushAfterCommit ? "Amend & Push" : "Amend Commit" }
         return model.pushAfterCommit ? "Commit & Push" : "Commit"
@@ -292,7 +294,16 @@ struct CommitActionControl: View {
     var body: some View {
         HStack(spacing: 0) {
             Button { model.commit() } label: {
-                Label(title, systemImage: "checkmark")
+                Group {
+                    if model.committing {
+                        HStack(spacing: 6) {
+                            ProgressView().controlSize(.mini).tint(.white).frame(width: 12, height: 12)
+                            Text("Processing…")
+                        }
+                    } else {
+                        Label(title, systemImage: "checkmark")
+                    }
+                }
                     .padding(.horizontal, 12)
                     .frame(height: 30)
                     .background(hoverMain && !disabled ? .white.opacity(0.1) : .clear)
@@ -302,8 +313,8 @@ struct CommitActionControl: View {
             .onHover { hoverMain = $0 }
             .keyboardShortcut(.return, modifiers: .command)
             .disabled(disabled)
-            .opacity(disabled ? 0.5 : 1)
-            .help(help)
+            .opacity(model.committing ? 0.75 : (disabled ? 0.5 : 1))
+            .help(model.committing ? "Committing…" : help)
 
             Rectangle().fill(.white.opacity(0.3)).frame(width: 1, height: 18)
             Button(action: showMenu) {

@@ -4,6 +4,19 @@ All notable changes to SidTree. Newest first; the app shows these notes in **Wha
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-24
+
+### Added
+- Edit tags: rename, move to another commit or change the message, locally and on the remote
+- Delete tags here and, if you like, from the remote as well
+- **Move Tag Here** in the history context menu
+- ⌘A selects all files in the staged or unstaged list; ↑/↓ move through files and Space stages or unstages the selection
+
+### Changed
+- The Commit button shows a spinner and **Processing…** while committing or pushing
+- Releases are built only when `VERSION` changes
+- Refreshed screenshots in the README
+
 ## [0.3.0] - 2026-11-24
 
 ### Added

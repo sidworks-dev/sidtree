@@ -12,9 +12,13 @@ struct FileListView<Menu: View>: View {
     var onDoubleClick: ((FileChange) -> Void)? = nil
     /// When set, rows can be dragged to the other list ("staged" or "unstaged").
     var dragKind: String? = nil
+    /// Space bar: stage/unstage the selected files.
+    var onToggleSelection: (([FileChange]) -> Void)? = nil
     @ViewBuilder var menu: (FileChange) -> Menu
 
     @State private var anchor: String?
+    @State private var cursor: String?
+    @FocusState private var listFocused: Bool
 
     var body: some View {
         GeometryReader { viewport in
@@ -52,6 +56,50 @@ struct FileListView<Menu: View>: View {
             selection.formIntersection(ids)
             if let anchor, !ids.contains(anchor) { self.anchor = nil }
         }
+        .focusable()
+        .focusEffectDisabled()
+        .focused($listFocused)
+        .onKeyPress(.upArrow, phases: [.down, .repeat]) { press in move(-1, extend: press.modifiers.contains(.shift)) }
+        .onKeyPress(.downArrow, phases: [.down, .repeat]) { press in move(1, extend: press.modifiers.contains(.shift)) }
+        .onKeyPress(.space) {
+            let chosen = files.filter { selection.contains($0.id) }
+            guard let onToggleSelection, !chosen.isEmpty else { return .ignored }
+            onToggleSelection(chosen)
+            return .handled
+        }
+        .background {
+            // ⌘A selects every file in this list while it has focus; text fields keep their own ⌘A.
+            Button("Select All Files") { selectAll() }
+                .keyboardShortcut("a", modifiers: .command)
+                .disabled(!listFocused || files.isEmpty)
+                .opacity(0)
+                .frame(width: 0, height: 0)
+                .accessibilityHidden(true)
+        }
+    }
+
+    private func selectAll() {
+        selection = Set(files.map(\.id))
+        if anchor == nil { anchor = files.first?.id }
+    }
+
+    /// ↑/↓ move the selection, ⇧ extends it from the anchor.
+    private func move(_ delta: Int, extend: Bool) -> KeyPress.Result {
+        guard !files.isEmpty else { return .ignored }
+        let start = cursor.flatMap { id in files.firstIndex { $0.id == id } }
+            ?? files.firstIndex { selection.contains($0.id) }
+            ?? (delta > 0 ? -1 : files.count)
+        let next = min(max(start + delta, 0), files.count - 1)
+        let file = files[next]
+        if extend, let anchor, let a = files.firstIndex(where: { $0.id == anchor }) {
+            selection = Set(files[min(a, next)...max(a, next)].map(\.id))
+        } else {
+            selection = [file.id]
+            anchor = file.id
+        }
+        cursor = file.id
+        onSelect(file)
+        return .handled
     }
 
     /// Dragging a selected row drags the whole selection; otherwise just that row.
@@ -61,6 +109,8 @@ struct FileListView<Menu: View>: View {
     }
 
     private func click(_ file: FileChange, modifiers flags: NSEvent.ModifierFlags = NSEvent.modifierFlags) {
+        listFocused = true
+        cursor = file.id
         if flags.contains(.command) {
             if selection.contains(file.id) { selection.remove(file.id) } else { selection.insert(file.id) }
             anchor = file.id

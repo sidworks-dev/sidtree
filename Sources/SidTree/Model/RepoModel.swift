@@ -116,6 +116,8 @@ final class RepoModel {
     }
     var commitFocusToken = 0
     var aiGenerating = false
+    /// True while a commit (and the optional push) is running.
+    var committing = false
     private var savedMessageBeforeAmend = ""
     private var statusDiffGeneration = 0
 
@@ -830,27 +832,35 @@ final class RepoModel {
     }
 
     func commit() {
-        guard canCommit, !pushAfterCommit || currentBranch != nil else { return }
+        guard !committing, canCommit, !pushAfterCommit || currentBranch != nil else { return }
+        committing = true
         let message = commitMessage
         let amend = self.amend
         let push = pushAfterCommit
         let branch = currentBranch
         let upstream = currentBranchInfo?.upstream
         perform(amend ? "Amending…" : "Committing…", success: push ? nil : "Committed") {
-            try await self.git.commit(message: message, amend: amend)
-            await MainActor.run {
-                self.savedMessageBeforeAmend = ""
-                self.commitMessage = ""
-                self.amend = false
-            }
-            if push, let branch {
-                let (remote, remoteBranch) = Self.splitUpstream(upstream) ?? (self.remotes.first ?? "origin", branch)
-                await MainActor.run { self.activity = "Pushing…" }
-                try await self.git.push(remote: remote, specs: [.init(local: branch, remote: remoteBranch)],
-                                        setUpstream: upstream == nil, tags: false, force: amend)
-                await MainActor.run { self.showToast("Committed and pushed to \(remote)/\(remoteBranch)") }
+            do {
+                try await self.commitAndPush(message: message, amend: amend, push: push, branch: branch, upstream: upstream)
+                await MainActor.run { self.committing = false }
+            } catch {
+                await MainActor.run { self.committing = false }
+                throw error
             }
         }
+    }
+
+    private func commitAndPush(message: String, amend: Bool, push: Bool, branch: String?, upstream: String?) async throws {
+        try await git.commit(message: message, amend: amend)
+        savedMessageBeforeAmend = ""
+        commitMessage = ""
+        self.amend = false
+        guard push, let branch else { return }
+        let (remote, remoteBranch) = Self.splitUpstream(upstream) ?? (remotes.first ?? "origin", branch)
+        activity = "Pushing…"
+        try await git.push(remote: remote, specs: [.init(local: branch, remote: remoteBranch)],
+                           setUpstream: upstream == nil, tags: false, force: amend)
+        showToast("Committed and pushed to \(remote)/\(remoteBranch)")
     }
 
     // MARK: - AI commit message

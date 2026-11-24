@@ -117,7 +117,7 @@ SidTree checks for new versions by itself and shows a small badge when one is av
 ./scripts/build.sh    # creates build/SidTree.app
 ```
 
-Only the Xcode Command Line Tools are needed. Releases are built by GitHub Actions from a version tag; see `scripts/release.sh` and [CHANGELOG.md](CHANGELOG.md).
+Only the Xcode Command Line Tools are needed. A release is built by GitHub Actions whenever `VERSION` changes on `main`: add the notes to [CHANGELOG.md](CHANGELOG.md), then run `scripts/release.sh x.y.z`.
 
 ## Credits
 
