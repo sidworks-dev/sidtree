@@ -4,10 +4,14 @@ All notable changes to SidTree. Newest first; the app shows these notes in **Wha
 
 ## [Unreleased]
 
-## [0.5.0] - 2026-11-24
+## [0.4.1] - 2026-11-24
 
 ### Added
 - Right-click the SidTree icon in the Dock to open one of your recent repositories, or open a new one
+
+### Fixed
+- Switching branches no longer scrolls the selected commit under the history's column header
+- Closing the last repository window shows the start screen instead of leaving SidTree without a window
 
 ## [0.4.0] - 2026-11-24
 

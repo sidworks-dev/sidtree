@@ -37,9 +37,39 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     static func ensureWindowForPendingRequests() {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
             guard !LaunchRequests.pending.isEmpty else { return }
-            if let fileMenu = NSApp.mainMenu?.items.first(where: { $0.submenu?.items.contains { $0.title == "New Window" } == true })?.submenu,
-               let index = fileMenu.items.firstIndex(where: { $0.title == "New Window" }) {
-                fileMenu.performActionForItem(at: index)
+            openNewWindow()
+        }
+    }
+
+    /// Opens a new (start screen) window through File → New Window.
+    static func openNewWindow() {
+        if let fileMenu = NSApp.mainMenu?.items.first(where: { $0.submenu?.items.contains { $0.title == "New Window" } == true })?.submenu,
+           let index = fileMenu.items.firstIndex(where: { $0.title == "New Window" }) {
+            fileMenu.performActionForItem(at: index)
+        }
+    }
+
+    private var terminating = false
+
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        terminating = true
+        return .terminateNow
+    }
+
+    /// Closing the last repository window shows the start screen instead of leaving no window at all.
+    private func showStartScreenAfterLastRepositoryCloses() {
+        NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification, object: nil, queue: .main) { [weak self] note in
+            guard let self, !self.terminating,
+                  let closing = note.object as? NSWindow,
+                  closing.identifier?.rawValue.hasPrefix("repo-") == true,
+                  closing.title != "SidTree"          // the start screen itself may close normally
+            else { return }
+            DispatchQueue.main.async {
+                guard !self.terminating else { return }
+                let stillOpen = NSApp.windows.contains {
+                    $0 !== closing && $0.isVisible && $0.identifier?.rawValue.hasPrefix("repo-") == true
+                }
+                if !stillOpen { Self.openNewWindow() }
             }
         }
     }
@@ -49,6 +79,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.activate(ignoringOtherApps: true)
         NSWindow.allowsAutomaticWindowTabbing = true
         AppearanceController.shared.apply()
+        showStartScreenAfterLastRepositoryCloses()
         DebugSnapshot.scheduleIfRequested()
         if !LaunchRequests.pending.isEmpty { Self.ensureWindowForPendingRequests() }
     }
@@ -188,11 +219,19 @@ enum DebugSnapshot {
     static func scheduleIfRequested() {
         guard let path = ProcessInfo.processInfo.environment["SIDTREE_SNAPSHOT"] else { return }
         let delay = Double(ProcessInfo.processInfo.environment["SIDTREE_SNAPSHOT_DELAY"] ?? "") ?? 3
+        if ProcessInfo.processInfo.environment["SIDTREE_DEBUG_CLOSE"] != nil {
+            DispatchQueue.main.asyncAfter(deadline: .now() + max(delay - 1.5, 0.5)) {
+                NSApp.windows.first { $0.identifier?.rawValue.hasPrefix("repo-") == true && $0.isVisible }?.performClose(nil)
+            }
+        }
         DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
             if let appearance = ProcessInfo.processInfo.environment["SIDTREE_APPEARANCE"] {
                 NSApp.appearance = NSAppearance(named: appearance == "dark" ? .darkAqua : .aqua)
             }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                if ProcessInfo.processInfo.environment["SIDTREE_DEBUG_WINDOWS"] != nil {
+                    for w in NSApp.windows { FileHandle.standardError.write(Data("window id=\(w.identifier?.rawValue ?? "-") title=\(w.title) visible=\(w.isVisible)\n".utf8)) }
+                }
                 guard let main = NSApp.windows.first(where: { $0.isVisible && $0.contentView != nil && $0.frame.width > 600 }),
                       case let window = main.attachedSheet ?? main,
                       let view = window.contentView?.superview ?? window.contentView,
