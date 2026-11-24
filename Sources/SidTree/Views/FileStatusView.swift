@@ -166,7 +166,7 @@ struct FileStatusView: View {
                         .font(.system(size: 11.5, weight: .semibold))
                         .foregroundStyle(.white)
                         .padding(.horizontal, 10).padding(.vertical, 4)
-                        .background(Theme.accent, in: Capsule())
+                        .background(Theme.action, in: Capsule())
                         .padding(.bottom, 12)
                 }
                 .allowsHitTesting(false)
@@ -248,8 +248,6 @@ struct CommitBox: View {
                     AIGenerateControl(model: model)
                     Rectangle().fill(Theme.border).frame(width: 1, height: 18)
                     Toggle("Amend last commit", isOn: $model.amend).toggleStyle(.checkbox)
-                    Toggle(pushLabel, isOn: $model.pushAfterCommit).toggleStyle(.checkbox)
-                        .disabled(model.currentBranch == nil)
                     Spacer()
                     let summary = model.commitMessage.split(separator: "\n", maxSplits: 1).first.map(String.init) ?? ""
                     if !summary.isEmpty {
@@ -259,14 +257,7 @@ struct CommitBox: View {
                             .help("Summary length (keep under 72)")
                     }
                     Text("\(model.status.staged.count) staged").font(.system(size: 11.5)).foregroundStyle(Theme.secondaryText)
-                    Button {
-                        model.commit()
-                    } label: {
-                        Label(model.amend ? "Amend Commit" : "Commit", systemImage: "checkmark")
-                    }
-                    .buttonStyle(PillButtonStyle(prominent: true))
-                    .keyboardShortcut(.return, modifiers: .command)
-                    .disabled(!model.canCommit)
+                    CommitActionControl(model: model)
                 }
                 .font(.system(size: 12))
                 .padding(.horizontal, 14)
@@ -278,10 +269,73 @@ struct CommitBox: View {
         .onAppear { if model.commitFocusToken > 0 { focused = true } }
     }
 
-    private var pushLabel: String {
-        if let up = model.status.upstream { return "Push to \(up)" }
-        if let b = model.currentBranch { return "Push to \(model.remotes.first ?? "origin")/\(b)" }
-        return "Push after commit"
+}
+
+/// The main button performs the remembered action; the arrow changes it without committing.
+struct CommitActionControl: View {
+    @Bindable var model: RepoModel
+    @State private var hoverMain = false
+    @State private var hoverMenu = false
+
+    private var disabled: Bool { !model.canCommit || (model.pushAfterCommit && model.currentBranch == nil) }
+    private var title: String {
+        if model.amend { return model.pushAfterCommit ? "Amend & Push" : "Amend Commit" }
+        return model.pushAfterCommit ? "Commit & Push" : "Commit"
+    }
+    private var help: String {
+        guard model.pushAfterCommit else { return "Commit staged changes (⌘Return)" }
+        guard let branch = model.currentBranch else { return "Choose Commit or check out a branch before pushing" }
+        let target = model.currentBranchInfo?.upstream ?? "\(model.remotes.first ?? "origin")/\(branch)"
+        return "Commit and push to \(target) (⌘Return)"
+    }
+
+    var body: some View {
+        HStack(spacing: 0) {
+            Button { model.commit() } label: {
+                Label(title, systemImage: "checkmark")
+                    .padding(.horizontal, 12)
+                    .frame(height: 30)
+                    .background(hoverMain && !disabled ? .white.opacity(0.1) : .clear)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .onHover { hoverMain = $0 }
+            .keyboardShortcut(.return, modifiers: .command)
+            .disabled(disabled)
+            .opacity(disabled ? 0.5 : 1)
+            .help(help)
+
+            Rectangle().fill(.white.opacity(0.3)).frame(width: 1, height: 18)
+            Button(action: showMenu) {
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 9, weight: .bold))
+                    .frame(width: 26, height: 30)
+                    .background(hoverMenu ? .white.opacity(0.1) : .clear)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .onHover { hoverMenu = $0 }
+            .help("Choose Commit or Commit & Push; remembered for this repository")
+            .accessibilityLabel("Commit action")
+        }
+        .font(.system(size: 12.5, weight: .medium))
+        .foregroundStyle(.white)
+        .background(Theme.action, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(Theme.accent.opacity(0.25)))
+    }
+
+    private func showMenu() {
+        let menu = NSMenu()
+        let commit = ClosureMenuItem("Commit") { model.pushAfterCommit = false }
+        commit.state = model.pushAfterCommit ? .off : .on
+        menu.addItem(commit)
+        let push = ClosureMenuItem("Commit & Push") { model.pushAfterCommit = true }
+        push.state = model.pushAfterCommit ? .on : .off
+        push.isEnabled = model.currentBranch != nil
+        menu.autoenablesItems = false
+        menu.addItem(push)
+        menu.popUp(positioning: nil, at: NSEvent.mouseLocation, in: nil)
     }
 }
 

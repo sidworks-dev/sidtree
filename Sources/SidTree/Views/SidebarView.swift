@@ -19,7 +19,7 @@ struct LogoMark: View {
                 .font(.system(size: size * 0.5, weight: .bold))
                 .foregroundStyle(.white)
                 .frame(width: size, height: size)
-                .background(Theme.accent, in: RoundedRectangle(cornerRadius: size * 0.28, style: .continuous))
+                .background(Theme.action, in: RoundedRectangle(cornerRadius: size * 0.28, style: .continuous))
         }
     }
 }
@@ -128,7 +128,7 @@ struct SidebarView: View {
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(.white)
                     .frame(width: 28, height: 28)
-                    .background(Theme.accent, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+                    .background(Theme.action, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
                 VStack(alignment: .leading, spacing: 1) {
                     Text(model.name).font(.system(size: 12.5, weight: .semibold)).foregroundStyle(Theme.text).lineLimit(1)
                     Text((model.root.deletingLastPathComponent().path as NSString).abbreviatingWithTildeInPath)

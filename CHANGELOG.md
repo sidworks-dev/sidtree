@@ -4,6 +4,15 @@ All notable changes to SidTree. Newest first; the app shows these notes in **Wha
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-24
+
+### Added
+- Select multiple files with a drag-selection rectangle in the file lists, with edge scrolling and Command/Shift modifiers
+- Commit action dropdown with Commit and Commit & Push, remembered separately for each repository
+
+### Changed
+- Warmer, lighter dark-mode surfaces with softer text and diff colors
+
 ## [0.2.0] - 2026-11-24
 
 ### Added

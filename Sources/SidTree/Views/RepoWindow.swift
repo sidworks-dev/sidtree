@@ -233,7 +233,7 @@ struct ActionButton: View {
                         .foregroundStyle(.white)
                         .padding(.horizontal, 5)
                         .frame(minWidth: 17, minHeight: 16)
-                        .background(Capsule().fill(Theme.accent))
+                        .background(Capsule().fill(Theme.action))
                 }
             }
         }

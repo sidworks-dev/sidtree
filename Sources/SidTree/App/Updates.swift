@@ -476,7 +476,7 @@ struct UpdateBadge: View {
                 .font(.system(size: 10.5, weight: .semibold))
                 .foregroundStyle(.white)
                 .padding(.horizontal, 7).padding(.vertical, 3)
-                .background(Theme.accent, in: Capsule())
+                .background(Theme.action, in: Capsule())
             }
             .buttonStyle(.plain)
             .help("SidTree \(release.version.description) is available")

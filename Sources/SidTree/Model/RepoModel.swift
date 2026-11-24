@@ -107,7 +107,9 @@ final class RepoModel {
     var statusDiff: FileDiff?
     var commitMessage = ""
     var amend = false { didSet { amendChanged(oldValue) } }
-    var pushAfterCommit = false
+    var pushAfterCommit = false {
+        didSet { RepositoryCommitSettings.save(pushAfterCommit: pushAfterCommit, for: root) }
+    }
     var commitFocusToken = 0
     var aiGenerating = false
     private var savedMessageBeforeAmend = ""
@@ -152,6 +154,7 @@ final class RepoModel {
         self.gitDir = gitDir
         self.git = GitService(root: root)
         let defaults = UserDefaults.standard
+        pushAfterCommit = RepositoryCommitSettings.pushesAfterCommit(for: root, defaults: defaults)
         historyLimit = max(500, defaults.integer(forKey: "historyLimit") == 0 ? 10000 : defaults.integer(forKey: "historyLimit"))
         if defaults.object(forKey: "showRemoteBranches") != nil {
             showRemotes = defaults.bool(forKey: "showRemoteBranches")
@@ -821,7 +824,7 @@ final class RepoModel {
     }
 
     func commit() {
-        guard canCommit else { return }
+        guard canCommit, !pushAfterCommit || currentBranch != nil else { return }
         let message = commitMessage
         let amend = self.amend
         let push = pushAfterCommit

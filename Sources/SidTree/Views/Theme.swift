@@ -11,22 +11,27 @@ enum Theme {
     }
 
     // AppKit
-    static let nsAccent = dynamic(0x7C3AED, 0x9B6CFF)
-    static let nsCanvas = dynamic(0xF6F4F0, 0x17161A)
-    static let nsSidebar = dynamic(0xFBFAF7, 0x1D1C21)
-    static let nsCard = dynamic(0xFFFFFF, 0x232228)
-    static let nsBorder = dynamic(0xE8E4DC, 0x33313A)
-    static let nsSubtle = dynamic(0xF4F2EE, 0x2A2930)
-    static let nsSelection = dynamic(0xEFE8FD, 0x2F2745)
-    static let nsText = dynamic(0x1F1D24, 0xECEAF2)
-    static let nsSecondaryText = dynamic(0x6B6874, 0x9C99A6)
-    static let nsAddedBg = dynamic(0xE7F6EC, 0x1C3326)
-    static let nsRemovedBg = dynamic(0xFCEBEB, 0x3A2023)
-    static let nsAddedText = dynamic(0x1A7F43, 0x6FD39A)
-    static let nsRemovedText = dynamic(0xB42318, 0xF28B82)
+    static let nsAccent = dynamic(0x7C3AED, 0xC9AFFA)
+    // Dark mode keeps the warm paper hues of light mode, with lifted charcoal surfaces.
+    static let nsCanvas = dynamic(0xF6F4F0, 0x2C2A28)
+    static let nsSidebar = dynamic(0xFBFAF7, 0x33312E)
+    static let nsCard = dynamic(0xFFFFFF, 0x3B3834)
+    static let nsBorder = dynamic(0xE8E4DC, 0x555048)
+    static let nsSubtle = dynamic(0xF4F2EE, 0x44403B)
+    static let nsSelection = dynamic(0xEFE8FD, 0x52465F)
+    static let nsText = dynamic(0x1F1D24, 0xE9E3DB)
+    static let nsSecondaryText = dynamic(0x6B6874, 0xC1BBB2)
+    static let nsAddedBg = dynamic(0xE7F6EC, 0x34493B)
+    static let nsRemovedBg = dynamic(0xFCEBEB, 0x533B39)
+    static let nsAddedText = dynamic(0x1A7F43, 0xA3D6AF)
+    static let nsRemovedText = dynamic(0xB42318, 0xF3AAA3)
+    // Filled controls need a deeper violet than accent-colored text to keep white labels readable.
+    static let nsAction = dynamic(0x7C3AED, 0x7C3AED)
 
     // SwiftUI
     static let accent = Color(nsColor: nsAccent)
+    static let action = Color(nsColor: nsAction)
+    static let destructiveAction = Color(nsColor: dynamic(0xDC2626, 0xAF3F3F))
     static let canvas = Color(nsColor: nsCanvas)
     static let sidebar = Color(nsColor: nsSidebar)
     static let card = Color(nsColor: nsCard)
@@ -40,16 +45,16 @@ enum Theme {
     static let addedText = Color(nsColor: nsAddedText)
     static let removedText = Color(nsColor: nsRemovedText)
 
-    static let green = Color(nsColor: dynamic(0x16A34A, 0x4ADE80))
-    static let greenSoft = Color(nsColor: dynamic(0xE7F6EC, 0x1C3326))
-    static let orange = Color(nsColor: dynamic(0xD97706, 0xFBBF24))
-    static let orangeSoft = Color(nsColor: dynamic(0xFEF3C7, 0x3A2F12))
-    static let red = Color(nsColor: dynamic(0xDC2626, 0xF87171))
-    static let redSoft = Color(nsColor: dynamic(0xFDECEC, 0x3A2023))
-    static let blue = Color(nsColor: dynamic(0x2563EB, 0x60A5FA))
-    static let blueSoft = Color(nsColor: dynamic(0xE8EFFD, 0x1D2840))
-    static let violetSoft = Color(nsColor: dynamic(0xF1EAFE, 0x2D2544))
-    static let graySoft = Color(nsColor: dynamic(0xEFEDE8, 0x2C2B31))
+    static let green = Color(nsColor: dynamic(0x16A34A, 0xA3D6AF))
+    static let greenSoft = Color(nsColor: dynamic(0xE7F6EC, 0x34493B))
+    static let orange = Color(nsColor: dynamic(0xD97706, 0xEBC47D))
+    static let orangeSoft = Color(nsColor: dynamic(0xFEF3C7, 0x514431))
+    static let red = Color(nsColor: dynamic(0xDC2626, 0xF3AAA3))
+    static let redSoft = Color(nsColor: dynamic(0xFDECEC, 0x533B39))
+    static let blue = Color(nsColor: dynamic(0x2563EB, 0xA8C6EC))
+    static let blueSoft = Color(nsColor: dynamic(0xE8EFFD, 0x37475A))
+    static let violetSoft = Color(nsColor: dynamic(0xF1EAFE, 0x4B405A))
+    static let graySoft = Color(nsColor: dynamic(0xEFEDE8, 0x46423D))
 
     static let radius: CGFloat = 12
 }
@@ -113,7 +118,7 @@ struct PillButtonStyle: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         let fg: Color = prominent ? .white : (destructive ? Theme.red : Theme.text)
-        let bg: Color = prominent ? (destructive ? Theme.red : Theme.accent) : Theme.card
+        let bg: Color = prominent ? (destructive ? Theme.destructiveAction : Theme.action) : Theme.card
         configuration.label
             .font(.system(size: compact ? 11.5 : 12.5, weight: .medium))
             .foregroundStyle(fg)
