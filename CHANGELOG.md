@@ -4,6 +4,8 @@ All notable changes to SidTree. Newest first; the app shows these notes in **Wha
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-24
+
 ### Added
 - Drag files between Staged and Unstaged to stage or unstage them, including a multi-selection
 - Check for updates on startup (Settings → General), with a Check Now button
