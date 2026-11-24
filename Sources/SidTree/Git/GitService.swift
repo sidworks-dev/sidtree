@@ -344,8 +344,33 @@ struct GitService {
         try await check(args)
     }
 
-    func pushTag(_ tag: String, remote: String) async throws {
-        try await check(["push", remote, "refs/tags/\(tag)"])
+    func pushTag(_ tag: String, remote: String, force: Bool = false) async throws {
+        var args = ["push", remote, "refs/tags/\(tag)"]
+        if force { args.append("--force") }
+        try await check(args)
+    }
+
+    func deleteRemoteTag(_ tag: String, remote: String) async throws {
+        try await check(["push", remote, "--delete", "refs/tags/\(tag)"])
+    }
+
+    /// Whether the tag exists on the remote (asks the server).
+    func tagExistsOnRemote(_ tag: String, remote: String) async -> Bool {
+        let r = await run(["ls-remote", "--tags", remote, "refs/tags/\(tag)"])
+        return r.status == 0 && !r.output.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    /// Message of an annotated tag; empty for lightweight tags.
+    func tagMessage(_ tag: String) async -> String {
+        let r = await run(["for-each-ref", "refs/tags/\(tag)", "--format=%(objecttype)%00%(contents)"])
+        let parts = r.output.split(separator: "\0", maxSplits: 1, omittingEmptySubsequences: false)
+        guard parts.count == 2, parts[0] == "tag" else { return "" }
+        return String(parts[1]).trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// Commit a ref points to.
+    func resolveCommit(_ ref: String) async throws -> String {
+        try await check(["rev-parse", "--verify", "\(ref)^{commit}"]).output.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     // MARK: Branches
@@ -424,12 +449,11 @@ struct GitService {
     }
     func cherryPick(_ hash: String) async throws { try await check(["cherry-pick", hash]) }
 
-    func createTag(_ name: String, at hash: String, message: String?) async throws {
-        if let message, !message.isEmpty {
-            try await check(["tag", "-a", name, "-m", message, hash])
-        } else {
-            try await check(["tag", name, hash])
-        }
+    func createTag(_ name: String, at hash: String, message: String?, force: Bool = false) async throws {
+        var args = ["tag"]
+        if force { args.append("-f") }
+        if let message, !message.isEmpty { args += ["-a", name, "-m", message, hash] } else { args += [name, hash] }
+        try await check(args)
     }
     func deleteTag(_ name: String) async throws { try await check(["tag", "-d", name]) }
 

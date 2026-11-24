@@ -261,6 +261,21 @@ struct HistoryTable: NSViewRepresentable {
             }
             menu.addItem(ClosureMenuItem("New Branch from Here") { m.sheet = .newBranch(startPoint: commit.id) })
             menu.addItem(ClosureMenuItem("New Tag") { m.sheet = .tag(commit.id) })
+            let tagRefs = commit.refs.filter { $0.kind == .tag }
+            for ref in tagRefs {
+                menu.addItem(ClosureMenuItem("Edit Tag \(ref.name)") { m.sheet = .editTag(ref.name, target: nil) })
+                menu.addItem(ClosureMenuItem("Delete Tag \(ref.name)") { m.sheet = .deleteTag(ref.name) })
+            }
+            let movable = m.tags.filter { t in !tagRefs.contains { $0.name == t.name } }
+            if !movable.isEmpty {
+                let item = NSMenuItem(title: "Move Tag Here", action: nil, keyEquivalent: "")
+                let sub = NSMenu()
+                for t in movable.prefix(40) {
+                    sub.addItem(ClosureMenuItem(t.name) { m.sheet = .editTag(t.name, target: commit.id) })
+                }
+                item.submenu = sub
+                menu.addItem(item)
+            }
             menu.addItem(.separator())
             if let current {
                 menu.addItem(ClosureMenuItem("Reset \(current) to This Commit") { m.sheet = .reset(commit.id) })

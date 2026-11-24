@@ -269,7 +269,8 @@ struct SidebarView: View {
         }
         Button("Copy Tag Name") { model.copyToPasteboard(t.name) }
         Divider()
-        Button("Delete Tag…", role: .destructive) { model.deleteTag(t) }
+        Button("Edit Tag") { model.sheet = .editTag(t.name, target: nil) }
+        Button("Delete Tag", role: .destructive) { model.deleteTag(t) }
     }
 
     @ViewBuilder

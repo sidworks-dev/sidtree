@@ -21,6 +21,8 @@ enum SheetKind: Identifiable {
     case rebase(String)
     case stash
     case tag(String?)
+    case editTag(String, target: String?)
+    case deleteTag(String)
     case reset(String)
 
     var id: String {
@@ -34,6 +36,8 @@ enum SheetKind: Identifiable {
         case .rebase(let b): return "rebase-\(b)"
         case .stash: return "stash"
         case .tag(let c): return "tag-\(c ?? "")"
+        case .editTag(let t, let target): return "edit-tag-\(t)-\(target ?? "")"
+        case .deleteTag(let t): return "delete-tag-\(t)"
         case .reset(let c): return "reset-\(c)"
         }
     }
@@ -179,6 +183,10 @@ final class RepoModel {
         if let view = ProcessInfo.processInfo.environment["SIDTREE_DEBUG_VIEW"] {
             Task {
                 try? await Task.sleep(nanoseconds: 1_500_000_000)
+                if let tag = ProcessInfo.processInfo.environment["SIDTREE_DEBUG_EDIT_TAG"] {
+                    sheet = .editTag(tag, target: nil)
+                    return
+                }
                 if let branch = ProcessInfo.processInfo.environment["SIDTREE_DEBUG_CHECKOUT"] {
                     checkout(localName: branch)
                     return
@@ -521,9 +529,7 @@ final class RepoModel {
     }
 
     func deleteTag(_ tag: Tag) {
-        confirm = ConfirmRequest(title: "Delete tag \(tag.name)?", message: "The tag is removed locally only.", actionTitle: "Delete") { [self] in
-            perform("Deleting tag…", success: "Deleted tag \(tag.name)") { try await self.git.deleteTag(tag.name) }
-        }
+        sheet = .deleteTag(tag.name)
     }
 
     func revert(_ commit: Commit) {

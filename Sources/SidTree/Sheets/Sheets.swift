@@ -16,6 +16,8 @@ struct SheetHost: View {
             case .rebase(let ref): RebaseSheet(model: model, onto: ref)
             case .stash: StashSheet(model: model)
             case .tag(let commit): TagSheet(model: model, commit: commit)
+            case .editTag(let name, let target): EditTagSheet(model: model, tagName: name, newTarget: target)
+            case .deleteTag(let name): DeleteTagSheet(model: model, tagName: name)
             case .reset(let commit): ResetSheet(model: model, commit: commit)
             }
         }
@@ -582,6 +584,134 @@ struct ResetSheet: View {
                 Label("All uncommitted changes will be lost permanently.", systemImage: "exclamationmark.triangle.fill")
                     .font(.system(size: 12)).foregroundStyle(Theme.red)
             }
+        }
+    }
+}
+
+// MARK: - Edit / delete tag
+
+/// Rename a tag, move it to another commit and/or change its message, locally and optionally on the remote.
+struct EditTagSheet: View {
+    let model: RepoModel
+    let tagName: String
+    let newTarget: String?
+    @State private var name = ""
+    @State private var target = ""
+    @State private var message = ""
+    @State private var originalHash = ""
+    @State private var originalMessage = ""
+    @State private var onRemote = false
+    @State private var updateRemote = false
+    @State private var loading = true
+
+    private var remote: String { model.preferredRemote ?? "origin" }
+
+    var body: some View {
+        SheetContainer(symbol: "tag", title: "Edit Tag", subtitle: tagName, confirmTitle: "Save Tag",
+                       confirmEnabled: !loading && !name.trimmingCharacters(in: .whitespaces).isEmpty && !target.isEmpty,
+                       onConfirm: save) {
+            VStack(alignment: .leading, spacing: 6) {
+                FieldLabel(text: "Tag name")
+                StyledTextField(placeholder: "v1.0.0", text: $name)
+            }
+            VStack(alignment: .leading, spacing: 6) {
+                FieldLabel(text: "Commit")
+                StyledTextField(placeholder: "commit hash, branch or tag", text: $target)
+                if !originalHash.isEmpty && !target.isEmpty && !originalHash.hasPrefix(target) && !target.hasPrefix(String(originalHash.prefix(7))) {
+                    Text("The tag moves from \(originalHash.prefix(8)) to \(target.prefix(12)).")
+                        .font(.system(size: 11.5)).foregroundStyle(Theme.orange)
+                }
+            }
+            VStack(alignment: .leading, spacing: 6) {
+                FieldLabel(text: "Message (leave empty for a lightweight tag)")
+                StyledTextField(placeholder: "Optional", text: $message)
+            }
+            if !model.remotes.isEmpty {
+                VStack(alignment: .leading, spacing: 4) {
+                    Toggle("Also update the tag on \(remote)", isOn: $updateRemote).toggleStyle(.checkbox).font(.system(size: 12))
+                    Text(loading ? "Checking \(remote)…" : (onRemote ? "This tag exists on \(remote). Others who already fetched it keep the old version until they fetch again." : "This tag is not on \(remote) yet."))
+                        .font(.system(size: 11)).foregroundStyle(Theme.secondaryText)
+                }
+            }
+        }
+        .task {
+            name = tagName
+            let current = model.tags.first { $0.name == tagName }?.hash ?? ""
+            originalHash = current
+            target = newTarget ?? current
+            originalMessage = await model.git.tagMessage(tagName)
+            message = originalMessage
+            if !model.remotes.isEmpty {
+                onRemote = await model.git.tagExistsOnRemote(tagName, remote: remote)
+                updateRemote = onRemote
+            }
+            loading = false
+        }
+    }
+
+    private func save() {
+        let old = tagName
+        let new = name.trimmingCharacters(in: .whitespaces).replacingOccurrences(of: " ", with: "-")
+        let ref = target.trimmingCharacters(in: .whitespaces)
+        let msg = message
+        let remote = self.remote
+        let pushRemote = updateRemote && !model.remotes.isEmpty
+        let wasOnRemote = onRemote
+        let originalHash = self.originalHash
+        let originalMessage = self.originalMessage
+        model.perform("Updating tag…", success: "Tag \(new) saved") {
+            let git = model.git
+            let commit = try await git.resolveCommit(ref)
+            let changed = commit != originalHash || msg != originalMessage
+            // Replace in place when only commit/message changed; create the new name and drop the old one on rename.
+            try await git.createTag(new, at: commit, message: msg, force: new == old)
+            if new != old { try await git.deleteTag(old) }
+            if pushRemote {
+                if new != old && wasOnRemote { try? await git.deleteRemoteTag(old, remote: remote) }
+                try await git.pushTag(new, remote: remote, force: new == old && changed)
+            }
+        }
+    }
+}
+
+struct DeleteTagSheet: View {
+    let model: RepoModel
+    let tagName: String
+    @State private var onRemote = false
+    @State private var alsoRemote = false
+    @State private var checking = true
+
+    private var remote: String { model.preferredRemote ?? "origin" }
+
+    var body: some View {
+        SheetContainer(symbol: "trash", title: "Delete Tag", subtitle: tagName, confirmTitle: "Delete Tag",
+                       destructive: true, onConfirm: delete) {
+            Text("The tag is removed from this repository. The commit itself stays.")
+                .font(.system(size: 12.5)).foregroundStyle(Theme.secondaryText)
+                .fixedSize(horizontal: false, vertical: true)
+            if !model.remotes.isEmpty {
+                VStack(alignment: .leading, spacing: 4) {
+                    Toggle("Also delete it from \(remote)", isOn: $alsoRemote).toggleStyle(.checkbox).font(.system(size: 12))
+                        .disabled(checking || !onRemote)
+                    Text(checking ? "Checking \(remote)…" : (onRemote ? "The tag exists on \(remote)." : "The tag is not on \(remote)."))
+                        .font(.system(size: 11)).foregroundStyle(Theme.secondaryText)
+                }
+            }
+        }
+        .task {
+            if !model.remotes.isEmpty {
+                onRemote = await model.git.tagExistsOnRemote(tagName, remote: remote)
+                alsoRemote = onRemote
+            }
+            checking = false
+        }
+    }
+
+    private func delete() {
+        let name = tagName, remote = self.remote, remoteToo = alsoRemote
+        model.perform("Deleting tag…", success: remoteToo ? "Deleted \(name) here and on \(remote)" : "Deleted tag \(name)") {
+            try await model.git.deleteTag(name)
+            if remoteToo { try await model.git.deleteRemoteTag(name, remote: remote) }
         }
     }
 }
