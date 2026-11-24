@@ -32,6 +32,7 @@ It is a native Mac app that talks to the Git already installed on your Mac. No a
 - **History with a graph.** Every branch, merge and tag at a glance, with authors, dates, hashes and ahead/behind counts.
 - **Staging that stays out of the way.** Tick files to stage them, or stage, unstage and discard single hunks right from the diff.
 - **The everyday actions.** Commit, pull, push to any remote branch, fetch, branch, merge, rebase, stash and tag.
+- **AI commit messages.** One click writes a clear commit message from your staged changes, with Claude Code or Codex.
 - **Calm conflict handling.** A clear banner while a merge or rebase is in progress, with resolve, continue and abort.
 - **Always up to date.** Changes from your editor or terminal show up by themselves.
 - **Light and dark.** A warm light theme and a dark theme, or follow macOS.
