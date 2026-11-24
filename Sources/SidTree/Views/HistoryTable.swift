@@ -129,7 +129,14 @@ struct HistoryTable: NSViewRepresentable {
         private func scrollToCenter(_ row: Int) {
             guard let table, let clip = table.enclosingScrollView?.contentView else { return }
             let rect = table.rect(ofRow: row)
-            let y = max(0, rect.midY - clip.bounds.height / 2)
+            // The column header sits on top of the rows (content inset), so the top-most
+            // position is -inset, not 0; clamp so short lists never scroll under the header.
+            let insetTop = clip.contentInsets.top
+            let insetBottom = clip.contentInsets.bottom
+            let visible = clip.bounds.height - insetTop - insetBottom
+            let minY = -insetTop
+            let maxY = max(minY, table.frame.height - clip.bounds.height + insetBottom)
+            let y = min(max(rect.midY - visible / 2 - insetTop, minY), maxY)
             clip.scroll(to: NSPoint(x: clip.bounds.origin.x, y: y))
             table.enclosingScrollView?.reflectScrolledClipView(clip)
         }

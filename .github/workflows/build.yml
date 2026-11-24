@@ -1,17 +1,15 @@
 name: Release
 
-# Runs when VERSION changes on main (scripts/release.sh), or by hand via "Run workflow".
+# Runs only for a version tag (pushed by scripts/release.sh), or by hand via "Run workflow".
 # Builds SidTree and publishes release v<VERSION> with the notes from CHANGELOG.md.
 on:
   push:
-    branches: [main]
-    paths: [VERSION]
+    tags: ["v*"]
   workflow_dispatch:
     inputs:
       ref:
-        description: Commit, branch or tag to release (empty = latest main)
-        required: false
-        default: ""
+        description: Version tag to (re)build, e.g. v0.4.0
+        required: true
       runner:
         description: macOS runner (Apple Silicon runners are sometimes queued for a long time)
         type: choice
@@ -41,12 +39,14 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
-          ref: ${{ inputs.ref || github.sha }}
+          ref: ${{ inputs.ref || github.ref }}
 
       - name: Read version
         id: version
         run: |
           VERSION="$(tr -d '[:space:]' < VERSION)"
+          TAG="${{ inputs.ref || github.ref_name }}"
+          [ "$TAG" = "v$VERSION" ] || { echo "Tag $TAG does not match VERSION $VERSION"; exit 1; }
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           if gh release view "v$VERSION" >/dev/null 2>&1; then
             echo "exists=true" >> "$GITHUB_OUTPUT"
@@ -87,5 +87,6 @@ jobs:
             on && /^## / { exit }
             on { print }
           ' CHANGELOG.md > notes.md
+          # The tag already exists (pushed with git), so no new ref is created here.
           gh release create "v$VERSION" build/SidTree-*.dmg build/SidTree-*.zip \
-            --target "$(git rev-parse HEAD)" --title "SidTree $VERSION" --notes-file notes.md
+            --verify-tag --title "SidTree $VERSION" --notes-file notes.md

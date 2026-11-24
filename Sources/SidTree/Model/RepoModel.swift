@@ -193,6 +193,16 @@ final class RepoModel {
                     checkout(localName: branch)
                     return
                 }
+                if let jumpTo = ProcessInfo.processInfo.environment["SIDTREE_DEBUG_JUMP"],
+                   let row = rows.first(where: { $0.commit.subject.contains(jumpTo) }) {
+                    jump(to: row.commit.id)
+                    try? await Task.sleep(nanoseconds: 600_000_000)
+                    if let back = ProcessInfo.processInfo.environment["SIDTREE_DEBUG_JUMP_BACK"],
+                       let top = rows.first(where: { $0.commit.subject.contains(back) }) {
+                        jump(to: top.commit.id)
+                    }
+                    return
+                }
                 let wanted = ProcessInfo.processInfo.environment["SIDTREE_DEBUG_SELECT"] ?? ""
                 if view == "status" {
                     sidebarSelection = .fileStatus
