@@ -243,6 +243,29 @@ enum Parsers {
         return files.sorted { $0.path.localizedStandardCompare($1.path) == .orderedAscending }
     }
 
+    // MARK: numstat -z
+
+    /// `--numstat -z`: "added\tremoved\tpath\0", or "added\tremoved\t\0old\0new\0" for renames. Binary files use "-".
+    static func parseNumstat(_ data: Data) -> [String: LineStat] {
+        let tokens = splitNul(data)
+        var stats: [String: LineStat] = [:]
+        var i = 0
+        while i < tokens.count {
+            let parts = tokens[i].split(separator: "\t", maxSplits: 2, omittingEmptySubsequences: false)
+            i += 1
+            guard parts.count == 3 else { continue }
+            let stat = LineStat(added: Int(parts[0]), removed: Int(parts[1]))
+            if parts[2].isEmpty {
+                guard i + 1 < tokens.count else { break }
+                stats[tokens[i + 1]] = stat
+                i += 2
+            } else {
+                stats[String(parts[2])] = stat
+            }
+        }
+        return stats
+    }
+
     // MARK: Stash
 
     static func parseStashes(_ data: Data) -> [Stash] {

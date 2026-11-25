@@ -107,18 +107,35 @@ enum GraphLayout {
 }
 
 enum GraphPalette {
+    /// Lane colours: violet, teal and amber first (as in the design), then further distinct hues.
     static let colors: [NSColor] = [
-        NSColor(srgbRed: 0.10, green: 0.53, blue: 0.98, alpha: 1),  // blue
-        NSColor(srgbRed: 0.98, green: 0.55, blue: 0.10, alpha: 1),  // orange
-        NSColor(srgbRed: 0.90, green: 0.24, blue: 0.20, alpha: 1),  // red
-        NSColor(srgbRed: 0.20, green: 0.72, blue: 0.45, alpha: 1),  // green
-        NSColor(srgbRed: 0.54, green: 0.27, blue: 0.98, alpha: 1),  // sidworks purple
-        NSColor(srgbRed: 0.10, green: 0.74, blue: 0.80, alpha: 1),  // teal
-        NSColor(srgbRed: 0.94, green: 0.36, blue: 0.66, alpha: 1),  // pink
-        NSColor(srgbRed: 0.85, green: 0.70, blue: 0.10, alpha: 1),  // yellow
-        NSColor(srgbRed: 0.40, green: 0.48, blue: 0.95, alpha: 1),  // indigo
-        NSColor(srgbRed: 0.55, green: 0.75, blue: 0.20, alpha: 1)  // lime
+        Theme.dynamic(0x7C3AED, 0x8B5CF6),  // violet
+        Theme.dynamic(0x0F8A7A, 0x3FB9A8),  // teal
+        Theme.dynamic(0xA16207, 0xE6B35A),  // amber
+        Theme.dynamic(0x2563EB, 0x6FA3F7),  // blue
+        Theme.dynamic(0xC0367A, 0xE879B0),  // pink
+        Theme.dynamic(0x2F855A, 0x6FCF8E),  // green
+        Theme.dynamic(0xC53030, 0xF08A8A),  // red
+        Theme.dynamic(0x4F46E5, 0x9A94F5),  // indigo
+        Theme.dynamic(0x0E7490, 0x5CC8E0),  // cyan
+        Theme.dynamic(0x65A30D, 0xA3D45A)   // lime
     ]
 
-    static func color(_ index: Int) -> NSColor { colors[((index % colors.count) + colors.count) % colors.count] }
+    /// Readable label text for refs on a lane.
+    static let labelColors: [NSColor] = [
+        Theme.dynamic(0x6D28D9, 0xC4B5FD),
+        Theme.dynamic(0x0F766E, 0x7FDCCD),
+        Theme.dynamic(0x92400E, 0xF0CB85),
+        Theme.dynamic(0x1D4ED8, 0xA9C7FB),
+        Theme.dynamic(0x9D174D, 0xF5B3D3),
+        Theme.dynamic(0x276749, 0xA6E3B8),
+        Theme.dynamic(0x9B2C2C, 0xF6B3B3),
+        Theme.dynamic(0x4338CA, 0xC4C1FA),
+        Theme.dynamic(0x155E75, 0x9EDDEC),
+        Theme.dynamic(0x4D7C0F, 0xC7E79A)
+    ]
+
+    private static func wrap(_ index: Int) -> Int { ((index % colors.count) + colors.count) % colors.count }
+    static func color(_ index: Int) -> NSColor { colors[wrap(index)] }
+    static func labelColor(_ index: Int) -> NSColor { labelColors[wrap(index)] }
 }

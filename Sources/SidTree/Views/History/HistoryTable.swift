@@ -12,37 +12,39 @@ struct HistoryTable: NSViewRepresentable {
     func makeCoordinator() -> Coordinator { Coordinator(model: model) }
 
     func makeNSView(context: Context) -> NSScrollView {
-        let table = NSTableView()
+        let table = PointingTableView()
         table.style = .fullWidth
-        table.rowHeight = 24
+        table.rowHeight = 34
         table.intercellSpacing = NSSize(width: 0, height: 0)
         table.gridStyleMask = []
         table.usesAlternatingRowBackgroundColors = false
         table.allowsColumnReordering = true
         table.allowsColumnResizing = true
         table.allowsMultipleSelection = false
-        table.columnAutoresizingStyle = .lastColumnOnlyAutoresizingStyle
-        table.backgroundColor = Theme.nsCard
+        table.backgroundColor = Theme.nsCanvas
 
         for (id, title, width, min) in [
-            ("graph", "Graph", 120.0, 30.0),
-            ("description", "Description", 560.0, 160.0),
-            ("date", "Date", 150.0, 80.0),
-            ("author", "Author", 150.0, 60.0),
-            ("hash", "Commit", 80.0, 50.0)
+            ("graph", "Graph", 60.0, 30.0),
+            ("description", "Description", 420.0, 160.0),
+            ("author", "Author", 112.0, 60.0),
+            ("date", "Date", 124.0, 80.0),
+            ("hash", "Commit", 82.0, 50.0)
         ] {
             let col = NSTableColumn(identifier: NSUserInterfaceItemIdentifier(id))
+            col.headerCell = HistoryHeaderCell(textCell: title)
             col.title = title
             col.width = width
             col.minWidth = min
-            col.resizingMask = .userResizingMask
+            col.resizingMask = id == "description" ? [.autoresizingMask, .userResizingMask] : .userResizingMask
             table.addTableColumn(col)
         }
-        table.autosaveName = "SidTreeHistoryTable"
+        // Description takes the remaining width; the fixed columns keep their size.
+        table.columnAutoresizingStyle = .uniformColumnAutoresizingStyle
+        table.autosaveName = "SidTreeHistoryTable.v2"
         table.autosaveTableColumns = true
 
         let header = OpaqueHeaderView()
-        header.frame = NSRect(x: 0, y: 0, width: 100, height: 28)
+        header.frame = NSRect(x: 0, y: 0, width: 100, height: 30)
         table.headerView = header
 
         let headerMenu = NSMenu()
@@ -89,8 +91,18 @@ struct HistoryTable: NSViewRepresentable {
         private var scrollToken = 0
         private var syncingSelection = false
         private var filtering = false
+        private var adjustingGraph = false
+        static let graphWidthKey = "history.graphWidth"
 
         init(model: RepoModel) { self.model = model }
+
+        /// Remembers the graph width once the user drags it.
+        func tableViewColumnDidResize(_ notification: Notification) {
+            guard !adjustingGraph, let table, table.inLiveResize == false,
+                  let col = notification.userInfo?["NSTableColumn"] as? NSTableColumn,
+                  col.identifier.rawValue == "graph", NSEvent.pressedMouseButtons & 1 == 1 else { return }
+            UserDefaults.standard.set(Double(col.width), forKey: Self.graphWidthKey)
+        }
 
         func sync(version: Int, selectedID: String?, scrollToken: Int, filtering: Bool) {
             guard let table else { return }
@@ -143,14 +155,18 @@ struct HistoryTable: NSViewRepresentable {
 
         private func adjustGraphColumn() {
             guard let table, let col = table.tableColumn(withIdentifier: NSUserInterfaceItemIdentifier("graph")) else { return }
-            if filtering {
-                col.isHidden = true
-                return
-            }
             col.isHidden = false
+            // A width the user dragged to wins; otherwise fit the lanes, but never more than ~4 of them:
+            // the description matters more, and wide graphs are clipped until the column is dragged wider.
+            let saved = UserDefaults.standard.double(forKey: Self.graphWidthKey)
             var lanes = 1
             for row in rows { lanes = max(lanes, row.graph.width) }
-            col.width = min(max(CGFloat(lanes) * GraphCellView.laneWidth + 14, 36), 360)
+            let width = saved > 0 ? CGFloat(saved) : min(max(CGFloat(lanes) * GraphCellView.laneWidth + 26, 48), 82)
+            guard abs(col.width - width) > 0.5 else { return }
+            adjustingGraph = true
+            col.width = width
+            table.sizeToFit()   // the description column absorbs the change, so nothing scrolls sideways
+            adjustingGraph = false
         }
 
         // Data source
@@ -164,7 +180,7 @@ struct HistoryTable: NSViewRepresentable {
             case "graph":
                 let view = (tableView.makeView(withIdentifier: id, owner: nil) as? GraphCellView) ?? GraphCellView()
                 view.identifier = id
-                view.configure(item.graph, commit: item.commit, isHead: item.commit.id == model.status.headOID)
+                view.configure(item.graph, commit: item.commit, dotOnly: filtering)
                 return view
             case "description":
                 let view = (tableView.makeView(withIdentifier: id, owner: nil) as? DescriptionCellView) ?? DescriptionCellView()
@@ -179,7 +195,7 @@ struct HistoryTable: NSViewRepresentable {
                     view.set("")
                 } else {
                     switch id.rawValue {
-                    case "date": view.set(Formatters.relativeDate(c.date))
+                    case "date": view.set(Formatters.historyDate(c.date), tooltip: Formatters.full.string(from: c.date))
                     case "author": view.set(c.author, tooltip: c.email)
                     default: view.set(c.shortHash, tooltip: c.id)
                     }
@@ -203,7 +219,7 @@ struct HistoryTable: NSViewRepresentable {
             guard let table, table.clickedRow >= 0, table.clickedRow < rows.count else { return }
             let commit = rows[table.clickedRow].commit
             if commit.isWorkingCopy {
-                model.sidebarSelection = .fileStatus
+                model.sidebarSelection = .changes
             } else if let branch = commit.refs.first(where: { $0.kind == .localBranch && !$0.isCurrent }) {
                 model.checkout(localName: branch.name)
             }
@@ -228,7 +244,7 @@ struct HistoryTable: NSViewRepresentable {
             guard let table, table.clickedRow >= 0, table.clickedRow < rows.count else { return }
             let commit = rows[table.clickedRow].commit
             if commit.isWorkingCopy {
-                menu.addItem(ClosureMenuItem("Show File Status") { [model] in model.sidebarSelection = .fileStatus })
+                menu.addItem(ClosureMenuItem("Show Changes") { [model] in model.sidebarSelection = .changes })
                 return
             }
             buildCommitMenu(menu, commit: commit)
@@ -312,41 +328,12 @@ struct HistoryTable: NSViewRepresentable {
     }
 }
 
-// MARK: - Menu helper
-
-final class ClosureMenuItem: NSMenuItem {
-    private let handler: () -> Void
-
-    init(_ title: String, handler: @escaping () -> Void) {
-        self.handler = handler
-        super.init(title: title, action: #selector(fire), keyEquivalent: "")
-        target = self
+/// Commit rows are clickable: show the pointing hand over them.
+final class PointingTableView: NSTableView {
+    override func resetCursorRects() {
+        let rows = rect(ofRow: max(numberOfRows - 1, 0)).maxY
+        addCursorRect(NSRect(x: 0, y: 0, width: bounds.width, height: min(rows, bounds.height)), cursor: .pointingHand)
     }
-
-    required init(coder: NSCoder) { fatalError("ClosureMenuItem is created in code only") }
-
-    @objc private func fire() { handler() }
-}
-
-// MARK: - Formatters
-
-enum Formatters {
-    static let relative: DateFormatter = {
-        let f = DateFormatter()
-        f.doesRelativeDateFormatting = true
-        f.dateStyle = .medium
-        f.timeStyle = .short
-        return f
-    }()
-
-    static let full: DateFormatter = {
-        let f = DateFormatter()
-        f.dateStyle = .long
-        f.timeStyle = .medium
-        return f
-    }()
-
-    static func relativeDate(_ d: Date) -> String { relative.string(from: d) }
 }
 
 // MARK: - Row & cells
@@ -354,12 +341,17 @@ enum Formatters {
 final class HistoryRowView: NSTableRowView {
     override var interiorBackgroundStyle: NSView.BackgroundStyle { .normal }
 
+    override var isSelected: Bool {
+        didSet {
+            guard isSelected != oldValue else { return }
+            for view in subviews { view.needsDisplay = true }   // the graph dot fills white when selected
+        }
+    }
+
     override func drawSelection(in dirtyRect: NSRect) {
         guard selectionHighlightStyle != .none else { return }
         Theme.nsSelection.setFill()
-        bounds.fill()
-        Theme.nsAccent.setFill()
-        NSRect(x: 0, y: 0, width: 3, height: bounds.height).fill()
+        NSBezierPath(roundedRect: bounds.insetBy(dx: 8, dy: 0), xRadius: 6, yRadius: 6).fill()
     }
 }
 
@@ -368,15 +360,15 @@ final class TextCellView: NSTableCellView {
 
     convenience init(monospaced: Bool) {
         self.init(frame: .zero)
-        label.font = monospaced ? .monospacedSystemFont(ofSize: 11.5, weight: .regular) : .systemFont(ofSize: 12)
-        label.textColor = monospaced ? Theme.nsSecondaryText : Theme.nsText
+        label.font = monospaced ? .monospacedSystemFont(ofSize: 12, weight: .regular) : .systemFont(ofSize: 12)
+        label.textColor = monospaced ? Theme.nsTertiaryText : Theme.nsSecondaryText
         label.lineBreakMode = .byTruncatingTail
         label.translatesAutoresizingMaskIntoConstraints = false
         addSubview(label)
         textField = label
         NSLayoutConstraint.activate([
-            label.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 8),
-            label.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -4),
+            label.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 6),
+            label.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -6),
             label.centerYAnchor.constraint(equalTo: centerYAnchor)
         ])
     }
@@ -390,22 +382,22 @@ final class TextCellView: NSTableCellView {
 final class GraphCellView: NSTableCellView {
     static let laneWidth: CGFloat = 14
     private var row = GraphRow()
-    private var isHead = false
     private var isWorkingCopy = false
-    private var isMerge = false
+    private var dotOnly = false
 
     override var isFlipped: Bool { true }
 
-    func configure(_ row: GraphRow, commit: Commit, isHead: Bool) {
+    /// While searching, matches are not adjacent commits, so only the coloured dot on its lane is drawn.
+    func configure(_ row: GraphRow, commit: Commit, dotOnly: Bool) {
+        self.dotOnly = dotOnly
         clipsToBounds = true   // macOS 14+ no longer clips by default; never draw into the description
         self.row = row
-        self.isHead = isHead
         self.isWorkingCopy = commit.isWorkingCopy
-        self.isMerge = commit.isMerge
         needsDisplay = true
     }
 
-    private func x(_ lane: Int) -> CGFloat { 12 + CGFloat(lane) * Self.laneWidth }
+    /// Lanes start 18pt in: 8pt selection inset plus the design's 10pt first-lane offset.
+    private func x(_ lane: Int) -> CGFloat { 18 + CGFloat(lane) * Self.laneWidth }
 
     override func draw(_ dirtyRect: NSRect) {
         guard let ctx = NSGraphicsContext.current?.cgContext else { return }
@@ -415,11 +407,11 @@ final class GraphCellView: NSTableCellView {
         ctx.setLineWidth(2)
         ctx.setLineCap(.round)
 
-        for line in row.lines {
+        for line in row.lines where !dotOnly {
             let y0: CGFloat = line.upper ? 0 : mid
             let y1: CGFloat = line.upper ? mid : h
             let x0 = x(line.from), x1 = x(line.to)
-            let color = isWorkingCopy && line.from == row.node ? NSColor.tertiaryLabelColor : GraphPalette.color(line.color)
+            let color = isWorkingCopy && line.from == row.node ? Theme.nsTertiaryText : GraphPalette.color(line.color)
             ctx.setStrokeColor(color.cgColor)
             ctx.beginPath()
             ctx.move(to: CGPoint(x: x0, y: y0))
@@ -428,44 +420,26 @@ final class GraphCellView: NSTableCellView {
             } else {
                 let dy = y1 - y0
                 ctx.addCurve(to: CGPoint(x: x1, y: y1),
-                             control1: CGPoint(x: x0, y: y0 + dy * 0.75),
-                             control2: CGPoint(x: x1, y: y0 + dy * 0.25))
+                             control1: CGPoint(x: x0, y: y0 + dy * 0.7),
+                             control2: CGPoint(x: x1, y: y0 + dy * 0.3))
             }
             ctx.strokePath()
         }
 
+        // 12pt dot with a 2pt lane-coloured ring; the selected commit is filled white.
         let cx = x(row.node)
-        let color = GraphPalette.color(row.color)
-        if isWorkingCopy {
-            let r: CGFloat = 5
-            let rect = CGRect(x: cx - r, y: mid - r, width: r * 2, height: r * 2)
-            ctx.setFillColor(Theme.nsCard.cgColor)
-            ctx.fillEllipse(in: rect)
-            ctx.setStrokeColor(Theme.nsSecondaryText.cgColor)
-            ctx.setLineWidth(1.5)
-            ctx.setLineDash(phase: 0, lengths: [2, 2])
-            ctx.strokeEllipse(in: rect)
-            ctx.setLineDash(phase: 0, lengths: [])
-        } else if isHead {
-            let r: CGFloat = 5.5
-            let rect = CGRect(x: cx - r, y: mid - r, width: r * 2, height: r * 2)
-            ctx.setFillColor(Theme.nsCard.cgColor)
-            ctx.fillEllipse(in: rect)
-            ctx.setStrokeColor(color.cgColor)
-            ctx.setLineWidth(2.5)
-            ctx.strokeEllipse(in: rect.insetBy(dx: 0.5, dy: 0.5))
-            let inner: CGFloat = 2
-            ctx.setFillColor(color.cgColor)
-            ctx.fillEllipse(in: CGRect(x: cx - inner, y: mid - inner, width: inner * 2, height: inner * 2))
-        } else {
-            let r: CGFloat = isMerge ? 3.5 : 4.5
-            let rect = CGRect(x: cx - r, y: mid - r, width: r * 2, height: r * 2)
-            ctx.setFillColor(color.cgColor)
-            ctx.fillEllipse(in: rect)
-            ctx.setStrokeColor(Theme.nsCard.withAlphaComponent(0.9).cgColor)
-            ctx.setLineWidth(1.25)
-            ctx.strokeEllipse(in: rect.insetBy(dx: -0.6, dy: -0.6))
-        }
+        let rect = CGRect(x: cx - 6, y: mid - 6, width: 12, height: 12)
+        let lane = isWorkingCopy ? Theme.nsTertiaryText : GraphPalette.color(row.color)
+        let fill: NSColor = isWorkingCopy ? Theme.nsCanvas : (selected ? .white : lane)
+        ctx.setFillColor(fill.cgColor)
+        ctx.fillEllipse(in: rect)
+        ctx.setStrokeColor(lane.cgColor)
+        ctx.setLineWidth(2)
+        ctx.strokeEllipse(in: rect.insetBy(dx: 1, dy: 1))
+    }
+
+    private var selected: Bool {
+        (superview as? NSTableRowView)?.isSelected ?? false
     }
 
     override var backgroundStyle: NSView.BackgroundStyle {
@@ -497,74 +471,62 @@ final class DescriptionCellView: NSTableCellView {
         didSet { needsDisplay = true }
     }
 
-    private static let badgeFont = NSFont.systemFont(ofSize: 11, weight: .semibold)
-    private static var badgeImages: [String: NSImage] = [:]
-
-    private static func badgeImage(_ symbol: String) -> NSImage? {
-        if let cached = badgeImages[symbol] { return cached }
-        let img = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)?
-            .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 9, weight: .bold).applying(.init(paletteColors: [.white])))
-        badgeImages[symbol] = img
-        return img
-    }
-    private static let subjectFont = NSFont.systemFont(ofSize: 12)
-    private static let currentFont = NSFont.systemFont(ofSize: 12, weight: .semibold)
+    private static let badgeFont = NSFont.monospacedSystemFont(ofSize: 11, weight: .regular)
+    private static let subjectFont = NSFont.systemFont(ofSize: 13)
 
     override func draw(_ dirtyRect: NSRect) {
         guard let commit else { return }
         let h = bounds.height
-        var x: CGFloat = 6
+        var x: CGFloat = 4
 
-        for ref in commit.refs {
-            let (bg, symbol) = style(for: ref)
-            var text = ref.name
+        for ref in commit.refs where !(ref.kind == .remoteBranch && ref.name.hasSuffix("/HEAD")) {
+            var text = ref.kind == .head ? "HEAD" : ref.name
             if ref.kind == .localBranch, let b = branchInfo[ref.name] {
-                if b.ahead > 0 { text += "  \(b.ahead)↑" }
-                if b.behind > 0 { text += "  \(b.behind)↓" }
+                if b.ahead > 0 { text += " ↑\(b.ahead)" }
+                if b.behind > 0 { text += " ↓\(b.behind)" }
             }
-            let attrs: [NSAttributedString.Key: Any] = [.font: Self.badgeFont, .foregroundColor: NSColor.white]
+            let (bg, fg) = style(for: ref)
+            let attrs: [NSAttributedString.Key: Any] = [.font: Self.badgeFont, .foregroundColor: fg]
             let size = (text as NSString).size(withAttributes: attrs)
-            let iconW: CGFloat = symbol == nil ? 0 : 13
+            let iconW: CGFloat = ref.kind == .tag ? 12 : 0
             let w = ceil(size.width) + iconW + 12
             guard x + w < bounds.width - 40 else { break }
-            let rect = NSRect(x: x, y: (h - 17) / 2, width: w, height: 17)
-            let path = NSBezierPath(roundedRect: rect, xRadius: 4.5, yRadius: 4.5)
+            let rect = NSRect(x: x, y: ((h - 18) / 2).rounded(), width: w, height: 18)
             bg.setFill()
-            path.fill()
-            if let symbol, let img = Self.badgeImage(symbol) {
-                let s = img.size
-                img.draw(in: NSRect(x: rect.minX + 6, y: rect.midY - s.height / 2, width: s.width, height: s.height))
+            NSBezierPath(roundedRect: rect, xRadius: 4, yRadius: 4).fill()
+            if ref.kind == .tag, let img = Self.tagImage(fg) {
+                img.draw(in: NSRect(x: rect.minX + 6, y: rect.midY - 4.5, width: 9, height: 9))
             }
             (text as NSString).draw(at: NSPoint(x: rect.minX + 6 + iconW, y: rect.midY - size.height / 2), withAttributes: attrs)
-            x += w + 5
+            x += w + 6
         }
 
         let para = NSMutableParagraphStyle()
         para.lineBreakMode = .byTruncatingTail
-        let font: NSFont
-        let textColor: NSColor
-        if commit.isWorkingCopy {
-            font = NSFontManager.shared.convert(Self.currentFont, toHaveTrait: .italicFontMask)
-            textColor = Theme.nsSecondaryText
-        } else {
-            font = commit.refs.contains(where: { $0.isCurrent }) ? Self.currentFont : Self.subjectFont
-            textColor = Theme.nsText
-        }
-        let attrs: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: textColor, .paragraphStyle: para]
+        let textColor = commit.isWorkingCopy ? Theme.nsSecondaryText : Theme.nsText
+        let attrs: [NSAttributedString.Key: Any] = [.font: Self.subjectFont, .foregroundColor: textColor, .paragraphStyle: para]
+        let font = Self.subjectFont
         let textH = ceil(font.ascender - font.descender + font.leading)
-        let rect = NSRect(x: x + 2, y: (h - textH) / 2, width: max(0, bounds.width - x - 6), height: textH)
+        let rect = NSRect(x: x, y: (h - textH) / 2, width: max(0, bounds.width - x - 6), height: textH)
         (commit.subject as NSString).draw(with: rect, options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine], attributes: attrs)
     }
 
-    private func style(for ref: RefLabel) -> (NSColor, String?) {
-        let lane = GraphPalette.color(color)
+    private static func tagImage(_ color: NSColor) -> NSImage? {
+        NSImage(systemSymbolName: "tag.fill", accessibilityDescription: nil)?
+            .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 8, weight: .semibold).applying(.init(paletteColors: [color])))
+    }
+
+    /// Lane-tinted label: soft background in the lane colour with a readable text colour.
+    private func style(for ref: RefLabel) -> (NSColor, NSColor) {
         switch ref.kind {
-        case .head: return (NSColor.systemGray, "location.fill")
-        case .localBranch:
-            let background = ref.isCurrent ? lane : lane.blended(withFraction: 0.15, of: .black) ?? lane
-            return (background, ref.isCurrent ? "checkmark" : "arrow.triangle.branch")
-        case .remoteBranch: return (lane.withAlphaComponent(0.62), "cloud.fill")
-        case .tag: return (NSColor(srgbRed: 0.45, green: 0.45, blue: 0.50, alpha: 1), "tag.fill")
+        case .tag, .head:
+            return (Theme.dynamic(0x6B655E, 0.10, 0xB0A9A1, 0.16), Theme.nsSoftText)
+        case .localBranch, .remoteBranch:
+            let isDark = effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+            let lane = GraphPalette.color(color)
+            var resolved = lane
+            effectiveAppearance.performAsCurrentDrawingAppearance { resolved = lane.usingColorSpace(.sRGB) ?? lane }
+            return (resolved.withAlphaComponent(isDark ? 0.2 : 0.1), GraphPalette.labelColor(color))
         }
     }
 }
@@ -572,7 +534,7 @@ final class DescriptionCellView: NSTableCellView {
 /// Column header with a solid card background, so rows never shine through while scrolling.
 final class OpaqueHeaderView: NSTableHeaderView {
     override func draw(_ dirtyRect: NSRect) {
-        Theme.nsCard.setFill()
+        Theme.nsSidebar.setFill()
         dirtyRect.fill()
         super.draw(dirtyRect)
         Theme.nsBorder.setFill()
@@ -580,4 +542,22 @@ final class OpaqueHeaderView: NSTableHeaderView {
     }
 
     override var isOpaque: Bool { true }
+}
+
+/// Column title in the design's small semibold style, without native separators.
+final class HistoryHeaderCell: NSTableHeaderCell {
+    override func draw(withFrame cellFrame: NSRect, in controlView: NSView) {
+        drawInterior(withFrame: cellFrame, in: controlView)
+    }
+
+    override func drawInterior(withFrame cellFrame: NSRect, in controlView: NSView) {
+        let attrs: [NSAttributedString.Key: Any] = [
+            .font: NSFont.systemFont(ofSize: 11, weight: .semibold),
+            .foregroundColor: Theme.nsSecondaryText,
+            .kern: 0.44
+        ]
+        let size = (stringValue as NSString).size(withAttributes: attrs)
+        let leading: CGFloat = controlView is NSTableHeaderView && cellFrame.minX < 1 ? 18 : 6
+        (stringValue as NSString).draw(at: NSPoint(x: cellFrame.minX + leading, y: cellFrame.midY - size.height / 2), withAttributes: attrs)
+    }
 }

@@ -52,7 +52,36 @@ enum GitRunner {
         }
     }
 
+    // MARK: Repository config guard
+
+    private static let guardLock = NSLock()
+    private static var fsmonitorUnsafe: [String: Bool] = [:]
+
+    /// A repository's own `.git/config` can point `core.fsmonitor` at any program, and git runs it on every
+    /// `status` — which SidTree does automatically. Opening a downloaded repository must never run its code,
+    /// so only git's built-in daemon (`true`/`false`) is kept; anything else is switched off for SidTree's calls.
+    static func configGuard(for dir: URL) -> [String] {
+        let key = dir.standardizedFileURL.path
+        guardLock.lock()
+        let cached = fsmonitorUnsafe[key]
+        guardLock.unlock()
+        let unsafe = cached ?? {
+            let value = execute(["config", "--get", "core.fsmonitor"], in: dir, input: nil).output
+                .trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            let unsafe = !(value.isEmpty || ["true", "false", "yes", "no", "on", "off", "1", "0"].contains(value))
+            guardLock.lock()
+            fsmonitorUnsafe[key] = unsafe
+            guardLock.unlock()
+            return unsafe
+        }()
+        return unsafe ? ["-c", "core.fsmonitor=false"] : []
+    }
+
     static func runSync(_ args: [String], in dir: URL, input: Data? = nil) -> GitResult {
+        execute(configGuard(for: dir) + args, in: dir, input: input)
+    }
+
+    private static func execute(_ args: [String], in dir: URL, input: Data?) -> GitResult {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: gitPath)
         process.arguments = baseArgs + args

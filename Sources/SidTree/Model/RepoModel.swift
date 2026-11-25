@@ -3,7 +3,7 @@ import Observation
 import SwiftUI
 
 enum SidebarItem: Hashable {
-    case fileStatus
+    case changes
     case history
     case branch(String)
     case remoteBranch(String)
@@ -11,11 +11,14 @@ enum SidebarItem: Hashable {
     case stash(String)
 }
 
+enum SyncAction: Hashable { case fetch, pull, push }
+
 enum SheetKind: Identifiable {
     case push
     case pull
     case newBranch(startPoint: String?)
     case deleteBranches
+    case deleteBranch(String)
     case renameBranch(String)
     case merge(String?)
     case rebase(String)
@@ -31,6 +34,7 @@ enum SheetKind: Identifiable {
         case .pull: return "pull"
         case .newBranch(let s): return "newBranch-\(s ?? "")"
         case .deleteBranches: return "deleteBranches"
+        case .deleteBranch(let b): return "deleteBranch-\(b)"
         case .renameBranch(let b): return "rename-\(b)"
         case .merge(let b): return "merge-\(b ?? "")"
         case .rebase(let b): return "rebase-\(b)"
@@ -104,6 +108,8 @@ final class RepoModel {
     var selectedCommitFile: FileChange?
     var commitDiff: FileDiff?
     var commitDiffLoading = false
+    /// Line counts per file of `commitDetail`, loaded after the detail itself.
+    var commitStats: (hash: String, stats: [String: LineStat])?
     private var detailGeneration = 0
 
     // File status
@@ -121,6 +127,17 @@ final class RepoModel {
     private var savedMessageBeforeAmend = ""
     private var statusDiffGeneration = 0
 
+    /// False while the repository sits in a background tab: it then only keeps its status (changes, ahead/behind)
+    /// current and reloads history once it is shown again.
+    var isVisible = true {
+        didSet {
+            guard isVisible, !oldValue, staleHistory else { return }
+            staleHistory = false
+            Task { await refreshAll() }
+        }
+    }
+    private var staleHistory = false
+
     // UI state
     var sidebarSelection: SidebarItem? = .history { didSet { sidebarChanged() } }
     var sheet: SheetKind?
@@ -137,6 +154,10 @@ final class RepoModel {
         }
     }
     var activity: String?
+    /// Remote actions running right now; the toolbar shows a spinner on their button.
+    var syncing: Set<SyncAction> = []
+    /// Local branches being pushed right now (spinner next to the branch in the sidebar).
+    var pushingBranches: Set<String> = []
     var toast: String?
     var sidebarFilter = ""
 
@@ -189,38 +210,7 @@ final class RepoModel {
             Task { @MainActor in self?.appBecameActive() }
         }
         scheduleAutoFetch()
-        if let view = ProcessInfo.processInfo.environment["SIDTREE_DEBUG_VIEW"] {
-            Task {
-                try? await Task.sleep(nanoseconds: 1_500_000_000)
-                if let tag = ProcessInfo.processInfo.environment["SIDTREE_DEBUG_EDIT_TAG"] {
-                    sheet = .editTag(tag, target: nil)
-                    return
-                }
-                if let branch = ProcessInfo.processInfo.environment["SIDTREE_DEBUG_CHECKOUT"] {
-                    checkout(localName: branch)
-                    return
-                }
-                if let jumpTo = ProcessInfo.processInfo.environment["SIDTREE_DEBUG_JUMP"],
-                   let row = rows.first(where: { $0.commit.subject.contains(jumpTo) }) {
-                    jump(to: row.commit.id)
-                    try? await Task.sleep(nanoseconds: 600_000_000)
-                    if let back = ProcessInfo.processInfo.environment["SIDTREE_DEBUG_JUMP_BACK"],
-                       let top = rows.first(where: { $0.commit.subject.contains(back) }) {
-                        jump(to: top.commit.id)
-                    }
-                    return
-                }
-                let wanted = ProcessInfo.processInfo.environment["SIDTREE_DEBUG_SELECT"] ?? ""
-                if view == "status" {
-                    sidebarSelection = .fileStatus
-                    selectStatusFile(status.staged.first ?? status.unstaged.first)
-                } else if !wanted.isEmpty, let row = rows.first(where: { $0.commit.subject.contains(wanted) }) {
-                    selectCommit(row.commit.id)
-                } else if rows.count > 2 {
-                    selectCommit(rows[2].commit.id)
-                }
-            }
-        }
+        runDebugScenario()
     }
 
     func stop() {
@@ -420,7 +410,12 @@ extension RepoModel {
         pendingChange = []
         if change.contains(.ignoreRules) { await refreshIgnoredPaths() }
         if change.contains(.refs) {
-            await refreshAll()
+            if isVisible {
+                await refreshAll()
+            } else {
+                staleHistory = true
+                await refreshStatus()
+            }
         } else if change.contains(.workingCopy) {
             await refreshStatus()
         }
@@ -440,8 +435,13 @@ extension RepoModel {
                 try? await Task.sleep(nanoseconds: UInt64(max(minutes, 1)) * 60 * 1_000_000_000)
                 guard !Task.isCancelled, let self else { return }
                 if minutes > 0, self.opsRunning == 0, !self.remotes.isEmpty {
-                    try? await self.git.fetch()
-                    await self.refreshAll()
+                    try? await self.whileSyncing(.fetch) { try await self.git.fetch() }
+                    if self.isVisible {
+                        await self.refreshAll()
+                    } else {
+                        self.staleHistory = true
+                        await self.refreshStatus()
+                    }
                 }
             }
         }
@@ -495,7 +495,9 @@ extension RepoModel {
     }
 
     func fetch() {
-        perform("Fetching…", success: "Fetched all remotes") { try await self.git.fetch() }
+        perform("Fetching…", success: "Fetched all remotes") {
+            try await self.whileSyncing(.fetch) { try await self.git.fetch() }
+        }
     }
 
     func checkout(branch: Branch) {
@@ -538,23 +540,7 @@ extension RepoModel {
                 }
             }
         } else {
-            confirm = ConfirmRequest(title: "Delete branch \(branch.name)?",
-                                     message: "Unmerged commits on this branch would be lost; git refuses unless they are merged.",
-                                     actionTitle: "Delete") { [self] in
-                perform("Deleting \(branch.name)…", success: "Deleted \(branch.name)") {
-                    do { try await self.git.deleteBranch(branch.name, force: false) } catch let e as GitError where e.message.contains("not fully merged") {
-                        await MainActor.run {
-                            self.confirm = ConfirmRequest(title: "\(branch.name) is not fully merged",
-                                                          message: "Force delete it anyway? Its unmerged commits will be lost.",
-                                                          actionTitle: "Force Delete") { [self] in
-                                perform("Deleting \(branch.name)…", success: "Deleted \(branch.name)") {
-                                    try await self.git.deleteBranch(branch.name, force: true)
-                                }
-                            }
-                        }
-                    }
-                }
-            }
+            sheet = .deleteBranch(branch.name)
         }
     }
 
@@ -632,7 +618,7 @@ extension RepoModel {
 
     var showsHistory: Bool {
         switch sidebarSelection {
-        case .fileStatus, .stash: return false
+        case .changes, .stash: return false
         default: return true
         }
     }
@@ -686,9 +672,20 @@ extension RepoModel {
             let detail = await git.commitDetail(id, knownParents: knownParents)
             guard gen == detailGeneration else { return }
             commitDetail = detail
+            loadCommitStats(detail)
             let keepPath = selectedCommitFile?.path
             let file = detail?.files.first { $0.path == keepPath } ?? detail?.files.first
             selectCommitFile(file)
+        }
+    }
+
+    private func loadCommitStats(_ detail: CommitDetail?) {
+        guard let detail, detail.hash != workingCopyID else { return }
+        if commitStats?.hash == detail.hash { return }
+        Task {
+            let stats = await git.lineStats(detail.hash, parents: detail.parents)
+            guard commitDetail?.hash == detail.hash else { return }
+            commitStats = (detail.hash, stats)
         }
     }
 
@@ -699,11 +696,15 @@ extension RepoModel {
         guard let file, let detail = commitDetail else { commitDiff = nil; return }
         commitDiffLoading = true
         Task {
-            let diff: FileDiff
+            var diff: FileDiff
             if detail.hash == workingCopyID {
+                async let images = git.workingImages(file, againstHead: true)
                 diff = await headDiff(file)
+                diff.images = await images
             } else {
+                async let images = git.commitImages(detail.hash, parents: detail.parents, file: file)
                 diff = await git.commitDiff(detail.hash, parents: detail.parents, file: file)
+                diff.images = await images
             }
             guard gen == detailGeneration else { return }
             commitDiff = diff
@@ -731,7 +732,9 @@ extension RepoModel {
         let gen = statusDiffGeneration
         guard let file = selectedStatusFile else { statusDiff = nil; return }
         Task {
-            let diff = await git.workingDiff(file)
+            async let images = git.workingImages(file)
+            var diff = await git.workingDiff(file)
+            diff.images = await images
             guard gen == statusDiffGeneration else { return }
             statusDiff = diff
         }
@@ -846,7 +849,7 @@ extension RepoModel {
     // MARK: - Commit
 
     func requestCommit() {
-        sidebarSelection = .fileStatus
+        sidebarSelection = .changes
         commitFocusToken += 1
     }
 
@@ -895,8 +898,10 @@ extension RepoModel {
         guard push, let branch else { return }
         let (remote, remoteBranch) = Self.splitUpstream(upstream) ?? (remotes.first ?? "origin", branch)
         activity = "Pushing…"
-        try await git.push(remote: remote, specs: [.init(local: branch, remote: remoteBranch)],
-                           setUpstream: upstream == nil, tags: false, force: amend)
+        try await whilePushing([branch]) {
+            try await git.push(remote: remote, specs: [.init(local: branch, remote: remoteBranch)],
+                               setUpstream: upstream == nil, tags: false, force: amend)
+        }
         showToast("Committed and pushed to \(remote)/\(remoteBranch)")
     }
 }

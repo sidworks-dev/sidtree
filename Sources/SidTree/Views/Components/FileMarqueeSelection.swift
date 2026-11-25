@@ -2,8 +2,8 @@ import AppKit
 import SwiftUI
 
 enum FileListMetrics {
-    static let rowHeight: CGFloat = 26
-    static let spacing: CGFloat = 1
+    static let rowHeight: CGFloat = 30
+    static let spacing: CGFloat = 0
     static let padding: CGFloat = 6
 
     static func rowFrame(_ index: Int, width: CGFloat) -> CGRect {
@@ -36,6 +36,8 @@ struct FileMarqueeSelection: NSViewRepresentable {
     var dragFrames: [String: CGRect] = [:]
     var onDoubleClick: (Int) -> Void = { _ in }
     var onDragItems: (Int) -> [NSDraggingItem] = { _ in [] }
+    /// The row under the pointer (this view covers the rows, so it tracks hover for them).
+    var onHover: (Int?) -> Void = { _ in }
 
     func makeNSView(context: Context) -> FileMarqueeView { FileMarqueeView() }
 
@@ -50,6 +52,7 @@ struct FileMarqueeSelection: NSViewRepresentable {
         view.onFinish = onFinish
         view.onDoubleClick = onDoubleClick
         view.onDragItems = onDragItems
+        view.onHover = onHover
     }
 
     static func dismantleNSView(_ view: FileMarqueeView, coordinator: ()) {
@@ -58,7 +61,9 @@ struct FileMarqueeSelection: NSViewRepresentable {
 }
 
 final class FileMarqueeView: NSView, NSDraggingSource {
-    var ids: [String] = []
+    var ids: [String] = [] {
+        didSet { if ids != oldValue { window?.invalidateCursorRects(for: self) } }
+    }
     var selection: Set<String> = []
     var contentFrames: [CGRect] = []
     var dragFrames: [String: CGRect] = [:]
@@ -67,6 +72,8 @@ final class FileMarqueeView: NSView, NSDraggingSource {
     var onFinish: (Int?) -> Void = { _ in }
     var onDoubleClick: (Int) -> Void = { _ in }
     var onDragItems: (Int) -> [NSDraggingItem] = { _ in [] }
+    var onHover: (Int?) -> Void = { _ in }
+    private var hovered: Int?
 
     private var start: CGPoint?
     private var initialSelection: Set<String> = []
@@ -79,6 +86,30 @@ final class FileMarqueeView: NSView, NSDraggingSource {
     override var isFlipped: Bool { true }
     override var acceptsFirstResponder: Bool { true }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        for area in trackingAreas where area.owner === self { removeTrackingArea(area) }
+        addTrackingArea(NSTrackingArea(rect: .zero, options: [.mouseMoved, .mouseEnteredAndExited, .activeInActiveApp, .inVisibleRect],
+                                       owner: self, userInfo: nil))
+    }
+
+    override func mouseMoved(with event: NSEvent) { setHovered(row(at: convert(event.locationInWindow, from: nil))) }
+    override func mouseEntered(with event: NSEvent) { setHovered(row(at: convert(event.locationInWindow, from: nil))) }
+    override func mouseExited(with event: NSEvent) { setHovered(nil) }
+
+    private func setHovered(_ index: Int?) {
+        guard index != hovered else { return }
+        hovered = index
+        onHover(index)
+    }
+
+    /// Rows are clickable: show the pointing hand over them.
+    override func resetCursorRects() {
+        for index in ids.indices {
+            addCursorRect(FileListMetrics.rowFrame(index, width: bounds.width), cursor: .pointingHand)
+        }
+    }
 
     override func hitTest(_ point: NSPoint) -> NSView? {
         let localPoint = convert(point, from: superview)

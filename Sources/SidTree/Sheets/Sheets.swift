@@ -11,6 +11,7 @@ struct SheetHost: View {
             case .pull: PullSheet(model: model)
             case .newBranch(let start): NewBranchSheet(model: model, startPoint: start)
             case .deleteBranches: DeleteBranchesSheet(model: model)
+            case .deleteBranch(let name): DeleteBranchSheet(model: model, branchName: name)
             case .renameBranch(let name): RenameBranchSheet(model: model, oldName: name)
             case .merge(let ref): MergeSheet(model: model, preselected: ref)
             case .rebase(let ref): RebaseSheet(model: model, onto: ref)
@@ -221,7 +222,9 @@ struct PushSheet: View {
         let remote = self.remote, tags = pushTags, force = self.force
         let target = selected.count == 1 ? "\(remote)/\(specs[0].remote)" : remote
         model.perform("Pushing to \(remote)…", success: "Pushed to \(target)") {
-            try await model.git.push(remote: remote, specs: specs, setUpstream: track, tags: tags, force: force)
+            try await model.whilePushing(specs.map(\.local)) {
+                try await model.git.push(remote: remote, specs: specs, setUpstream: track, tags: tags, force: force)
+            }
         }
     }
 }
@@ -278,7 +281,9 @@ struct PullSheet: View {
     private func pull() {
         let remote = self.remote, branch = self.branch, rebase = self.rebase, commit = self.commit
         model.perform("Pulling from \(remote)/\(branch)…", success: "Pulled \(remote)/\(branch)") {
-            try await model.git.pull(remote: remote, branch: branch, rebase: rebase, commit: commit)
+            try await model.whileSyncing(.pull) {
+                try await model.git.pull(remote: remote, branch: branch, rebase: rebase, commit: commit)
+            }
         }
     }
 }
@@ -721,5 +726,54 @@ struct DeleteTagSheet: View {
             try await model.git.deleteTag(name)
             if remoteToo { try await model.git.deleteRemoteTag(name, remote: remote) }
         }
+    }
+}
+
+/// "Delete branch" with the choices SourceTree offers: force, and the branch on the remote too.
+struct DeleteBranchSheet: View {
+    let model: RepoModel
+    let branchName: String
+    @State private var force = false
+    @State private var alsoRemote = false
+
+    /// The tracked branch on the remote, when it still exists.
+    private var remoteBranch: (remote: String, branch: String)? {
+        guard let branch = model.localBranches.first(where: { $0.name == branchName }),
+              let upstream = branch.upstream, !branch.upstreamGone,
+              model.remoteBranches.contains(where: { $0.name == upstream }),
+              let remote = model.remotes.sorted(by: { $0.count > $1.count }).first(where: { upstream.hasPrefix($0 + "/") })
+        else { return nil }
+        return (remote, String(upstream.dropFirst(remote.count + 1)))
+    }
+
+    var body: some View {
+        SheetContainer(symbol: "trash", title: "Delete Branch", subtitle: branchName, confirmTitle: "Delete",
+                       destructive: true, onConfirm: delete) {
+            Text("Are you sure you want to delete this branch?")
+                .font(.system(size: 12.5)).foregroundStyle(Theme.secondaryText)
+            VStack(alignment: .leading, spacing: 10) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Toggle("Force delete", isOn: $force).toggleStyle(.checkbox).font(.system(size: 12.5))
+                    Text("Also when it has commits that are not merged anywhere; those commits will be lost.")
+                        .font(.system(size: 11)).foregroundStyle(Theme.tertiaryText)
+                        .padding(.leading, 20)
+                }
+                if let remote = remoteBranch {
+                    Toggle(isOn: $alsoRemote) {
+                        HStack(spacing: 4) {
+                            Text("Delete remote branch")
+                            Text("\(remote.remote)/\(remote.branch)").font(.system(size: 12, design: .monospaced))
+                                .foregroundStyle(Theme.secondaryText)
+                        }
+                    }
+                    .toggleStyle(.checkbox)
+                    .font(.system(size: 12.5))
+                }
+            }
+        }
+    }
+
+    private func delete() {
+        model.deleteLocalBranch(branchName, force: force, remote: alsoRemote ? remoteBranch : nil)
     }
 }

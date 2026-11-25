@@ -1,4 +1,5 @@
 import AppKit
+import Security
 import SwiftUI
 
 // MARK: - Versions
@@ -339,27 +340,63 @@ final class UpdateChecker: ObservableObject {
             guard let newApp = try fm.contentsOfDirectory(at: extract, includingPropertiesForKeys: nil)
                 .first(where: { $0.pathExtension == "app" }) else { throw AIError(message: "The update does not contain an app.") }
 
+            try Self.verifySignature(of: newApp)
+
             let dest = Bundle.main.bundleURL
             guard fm.isWritableFile(atPath: dest.deletingLastPathComponent().path) else {
                 throw AIError(message: "No permission to replace \(dest.path). Download the update manually.")
             }
+            // Paths are passed as arguments, never pasted into the script, so no path can change what it runs.
             let script = """
-            while kill -0 \(ProcessInfo.processInfo.processIdentifier) 2>/dev/null; do sleep 0.2; done
-            rm -rf "\(dest.path).old"
-            mv "\(dest.path)" "\(dest.path).old" && /usr/bin/ditto "\(newApp.path)" "\(dest.path)" && rm -rf "\(dest.path).old"
-            [ -d "\(dest.path)" ] || mv "\(dest.path).old" "\(dest.path)"
-            /usr/bin/xattr -dr com.apple.quarantine "\(dest.path)" 2>/dev/null
-            /usr/bin/open "\(dest.path)"
-            rm -rf "\(work.path)"
+            while kill -0 "$1" 2>/dev/null; do sleep 0.2; done
+            rm -rf "$2.old"
+            mv "$2" "$2.old" && /usr/bin/ditto "$3" "$2" && rm -rf "$2.old"
+            [ -d "$2" ] || mv "$2.old" "$2"
+            /usr/bin/xattr -dr com.apple.quarantine "$2" 2>/dev/null
+            /usr/bin/open "$2"
+            rm -rf "$4"
             """
             let p = Process()
             p.executableURL = URL(fileURLWithPath: "/bin/sh")
-            p.arguments = ["-c", script]
+            p.arguments = ["-c", script, "sidtree-update", String(ProcessInfo.processInfo.processIdentifier),
+                           dest.path, newApp.path, work.path]
             try p.run()
             NSApp.terminate(nil)
         } catch {
             message = error.localizedDescription
         }
+    }
+
+    /// The new app must carry a valid signature from the same developer (Team ID) and have the same bundle
+    /// identifier as the running app; a development build without a team only accepts a valid signature.
+    private static func verifySignature(of app: URL) throws {
+        var staticCode: SecStaticCode?
+        guard SecStaticCodeCreateWithPath(app as CFURL, [], &staticCode) == errSecSuccess, let staticCode else {
+            throw AIError(message: "The update could not be checked.")
+        }
+        let strict = SecCSFlags(rawValue: kSecCSCheckAllArchitectures | kSecCSStrictValidate | kSecCSCheckNestedCode)
+        guard SecStaticCodeCheckValidity(staticCode, strict, nil) == errSecSuccess else {
+            throw AIError(message: "The update is not correctly signed and was not installed.")
+        }
+        var info: CFDictionary?
+        SecCodeCopySigningInformation(staticCode, SecCSFlags(rawValue: kSecCSSigningInformation), &info)
+        let new = info as? [String: Any] ?? [:]
+        guard (new[kSecCodeInfoIdentifier as String] as? String) == Bundle.main.bundleIdentifier else {
+            throw AIError(message: "The update is a different app and was not installed.")
+        }
+        if let team = runningTeamIdentifier, (new[kSecCodeInfoTeamIdentifier as String] as? String) != team {
+            throw AIError(message: "The update is signed by a different developer and was not installed.")
+        }
+    }
+
+    private static var runningTeamIdentifier: String? {
+        var code: SecCode?
+        guard SecCodeCopySelf([], &code) == errSecSuccess, let code else { return nil }
+        var staticCode: SecStaticCode?
+        guard SecCodeCopyStaticCode(code, [], &staticCode) == errSecSuccess, let staticCode else { return nil }
+        var info: CFDictionary?
+        SecCodeCopySigningInformation(staticCode, SecCSFlags(rawValue: kSecCSSigningInformation), &info)
+        return (info as? [String: Any])?[kSecCodeInfoTeamIdentifier as String] as? String
     }
 
     private func download(_ release: ReleaseInfo, to dir: URL) async throws -> URL {
@@ -485,6 +522,7 @@ struct UpdateBadge: View {
                 .background(Theme.action, in: Capsule())
             }
             .buttonStyle(.plain)
+            .handCursor()
             .help("SidTree \(release.version.description) is available")
         }
     }

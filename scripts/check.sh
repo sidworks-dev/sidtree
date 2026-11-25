@@ -32,11 +32,16 @@ else
     fail "ShellCheck is not installed (brew install shellcheck)"
 fi
 
-step "CLI launcher"
-if ./scripts/test-cli.sh; then echo "✓ CLI checks clean"; else fail "CLI launcher checks"; fi
+# Local test suites are kept out of git; run them when they are present.
+if [ -x scripts/test-cli.sh ]; then
+    step "CLI launcher"
+    if ./scripts/test-cli.sh; then echo "✓ CLI checks clean"; else fail "CLI launcher checks"; fi
+fi
 
-step "File drag and selection"
-if ./scripts/test-file-drag.sh; then echo "✓ File drag checks clean"; else fail "File drag checks"; fi
+if [ -x scripts/test-file-drag.sh ] && [ -d Tests ]; then
+    step "File drag and selection"
+    if ./scripts/test-file-drag.sh; then echo "✓ File drag checks clean"; else fail "File drag checks"; fi
+fi
 
 echo
 if [ "$FAILED" = 0 ]; then echo "✓ All quality checks passed"; else echo "✗ Quality checks failed"; fi

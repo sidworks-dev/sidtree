@@ -4,7 +4,6 @@ import SwiftUI
 /// Selectable files with click, modifier-click and Finder-style marquee selection.
 struct FileListView<Menu: View>: View {
     let files: [FileChange]
-    let focused: FileChange?
     @Binding var selection: Set<String>
     var checkbox: Bool?          // nil: no checkbox; true: checked (staged); false: unchecked
     var onSelect: (FileChange) -> Void
@@ -15,45 +14,26 @@ struct FileListView<Menu: View>: View {
     var dragRoot: URL?
     /// Space bar: stage/unstage the selected files.
     var onToggleSelection: (([FileChange]) -> Void)?
+    /// False when the list sits inside an outer scroll view together with other content.
+    var scrolls = true
+    /// Optional trailing text per row, e.g. "+9 −1".
+    var detail: ((FileChange) -> String?)?
+    var selectionFill: Color = Theme.selection
     @ViewBuilder var menu: (FileChange) -> Menu
 
     @State private var anchor: String?
+    @State private var hoveredID: String?
     @State private var cursor: String?
     @FocusState private var listFocused: Bool
 
     var body: some View {
-        GeometryReader { viewport in
-            ScrollView {
-                LazyVStack(spacing: FileListMetrics.spacing) {
-                    ForEach(files) { file in
-                        FileRow(file: file,
-                                selected: selection.contains(file.id),
-                                focused: focused?.id == file.id,
-                                checkbox: checkbox,
-                                onToggle: { onToggle?(file) })
-                            .onTapGesture(count: 2) { onDoubleClick?(file) }
-                            .simultaneousGesture(TapGesture().onEnded { click(file) })
-                            .contextMenu { menu(file) }
-                    }
+        Group {
+            if scrolls {
+                GeometryReader { viewport in
+                    ScrollView { rows(minHeight: viewport.size.height) }
                 }
-                .padding(FileListMetrics.padding)
-                .frame(maxWidth: .infinity, minHeight: viewport.size.height, alignment: .topLeading)
-                .overlayPreferenceValue(FileRowContentBounds.self) { anchors in
-                    GeometryReader { geometry in
-                        FileMarqueeSelection(ids: files.map(\.id), selection: $selection,
-                                             contentFrames: anchors.content.mapValues { geometry[$0] },
-                                             onClick: { index, flags in click(files[index], modifiers: flags) },
-                                             onFinish: { index in
-                                                 guard let index else { return }
-                                                 anchor = files[index].id
-                                                 onSelect(files[index])
-                                             },
-                                             dragFrames: dragRoot != nil && dragKind != nil
-                                                 ? anchors.draggable.mapValues { geometry[$0] } : [:],
-                                             onDoubleClick: { onDoubleClick?(files[$0]) },
-                                             onDragItems: draggingItems)
-                    }
-                }
+            } else {
+                rows(minHeight: 0)
             }
         }
         .onChange(of: files.map(\.id)) { _, ids in
@@ -70,6 +50,42 @@ struct FileListView<Menu: View>: View {
             guard let onToggleSelection, !chosen.isEmpty else { return .ignored }
             onToggleSelection(chosen)
             return .handled
+        }
+    }
+
+    private func rows(minHeight: CGFloat) -> some View {
+        LazyVStack(spacing: FileListMetrics.spacing) {
+            ForEach(files) { file in
+                FileRow(file: file,
+                        selected: selection.contains(file.id),
+                        hovered: hoveredID == file.id,
+                        checkbox: checkbox,
+                        detail: detail?(file),
+                        selectionFill: selectionFill,
+                        onToggle: { onToggle?(file) })
+                    .onTapGesture(count: 2) { onDoubleClick?(file) }
+                    .simultaneousGesture(TapGesture().onEnded { click(file) })
+                    .contextMenu { menu(file) }
+            }
+        }
+        .padding(FileListMetrics.padding)
+        .frame(maxWidth: .infinity, minHeight: minHeight, alignment: .topLeading)
+        .overlayPreferenceValue(FileRowContentBounds.self) { anchors in
+            GeometryReader { geometry in
+                FileMarqueeSelection(ids: files.map(\.id), selection: $selection,
+                                     contentFrames: anchors.content.mapValues { geometry[$0] },
+                                     onClick: { index, flags in click(files[index], modifiers: flags) },
+                                     onFinish: { index in
+                                         guard let index else { return }
+                                         anchor = files[index].id
+                                         onSelect(files[index])
+                                     },
+                                     dragFrames: dragRoot != nil && dragKind != nil
+                                         ? anchors.draggable.mapValues { geometry[$0] } : [:],
+                                     onDoubleClick: { onDoubleClick?(files[$0]) },
+                                     onDragItems: draggingItems,
+                                     onHover: { index in hoveredID = index.flatMap { files.indices.contains($0) ? files[$0].id : nil } })
+            }
         }
     }
 
@@ -123,28 +139,30 @@ struct FileListView<Menu: View>: View {
 struct FileRow: View {
     let file: FileChange
     let selected: Bool
-    let focused: Bool
+    var hovered = false
     var checkbox: Bool?
+    var detail: String?
+    var selectionFill: Color = Theme.selection
     var onToggle: () -> Void = {}
-    @State private var hover = false
 
     var body: some View {
-        HStack(spacing: 8) {
-            HStack(spacing: 8) {
+        HStack(spacing: 9) {
+            HStack(spacing: 9) {
                 if let checkbox {
                     Button(action: onToggle) {
-                        Image(systemName: checkbox ? "checkmark.square.fill" : "square")
-                            .font(.system(size: 13))
-                            .foregroundStyle(checkbox ? Theme.accent : Theme.secondaryText)
+                        CheckBox(checked: checkbox)
+                            .frame(width: 18, height: 22)
+                            .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
+                    .handCursor()
                     .help(checkbox ? "Unstage" : "Stage")
                 }
-                HStack(spacing: 8) {
+                HStack(spacing: 9) {
                     FileStatusIcon(kind: file.kind)
                     HStack(spacing: 5) {
                         Text(file.path)
-                            .font(.system(size: 12.5, weight: focused ? .semibold : .regular))
+                            .font(.system(size: 13))
                             .foregroundStyle(Theme.text)
                             .lineLimit(1)
                             .truncationMode(.middle)
@@ -152,7 +170,7 @@ struct FileRow: View {
                         if let orig = file.originalPath {
                             Text("← \(orig)")
                                 .font(.system(size: 11))
-                                .foregroundStyle(Theme.secondaryText)
+                                .foregroundStyle(Theme.tertiaryText)
                                 .lineLimit(1)
                                 .truncationMode(.middle)
                         }
@@ -162,15 +180,21 @@ struct FileRow: View {
             }
             .transformAnchorPreference(key: FileRowContentBounds.self, value: .bounds) { $0.content[file.id] = $1 }
             Spacer(minLength: 0)
+            if let detail {
+                Text(detail)
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundStyle(Theme.tertiaryText)
+                    .lineLimit(1)
+                    .fixedSize()
+            }
         }
         .padding(.horizontal, 8)
         .frame(height: FileListMetrics.rowHeight)
         .background(
             RoundedRectangle(cornerRadius: 6, style: .continuous)
-                .fill(selected ? Theme.selection : (hover ? Theme.subtle : Color.clear))
+                .fill(selected ? selectionFill : (hovered ? Theme.subtle : Color.clear))
         )
         .contentShape(Rectangle())
-        .onHover { hover = $0 }
         .help(file.path)
     }
 }

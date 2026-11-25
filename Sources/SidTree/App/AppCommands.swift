@@ -4,13 +4,16 @@ import SwiftUI
 struct AppCommands: Commands {
     @Environment(\.openWindow) private var openWindow
     @FocusedValue(\.repoModel) private var model
-    @FocusedValue(\.repoURL) private var repoURL
+    @FocusedValue(\.workspace) private var workspace
     @ObservedObject private var recent = RecentRepos.shared
 
     var body: some Commands {
         CommandGroup(replacing: .newItem) {
             Button("New Window") { openWindow(id: "repo") }
                 .keyboardShortcut("n")
+            Button("New Tab") { workspace?.showOverview() }
+                .keyboardShortcut("t")
+                .disabled(workspace == nil)
             Divider()
             Button("Open…") {
                 if let url = RepoPicker.choose() { open(url) }
@@ -18,7 +21,7 @@ struct AppCommands: Commands {
             .keyboardShortcut("o")
             Menu("Open Recent") {
                 ForEach(recent.urls, id: \.self) { url in
-                    Button(url.lastPathComponent + "  —  " + (url.deletingLastPathComponent().path as NSString).abbreviatingWithTildeInPath) {
+                    Button(url.lastPathComponent + "  —  " + DisplayPath.parent(of: url)) {
                         open(url)
                     }
                 }
@@ -26,10 +29,25 @@ struct AppCommands: Commands {
                 Button("Clear Menu") { recent.clear() }
                     .disabled(recent.urls.isEmpty)
             }
+            Divider()
+            // Comes before the standard Close item, so ⌘W closes the tab first and the window once no tab is shown.
+            Button("Close Tab") { if let workspace, let id = workspace.activeID { workspace.close(id) } }
+                .keyboardShortcut("w")
+                .disabled(workspace?.activeID == nil)
+        }
+
+        CommandGroup(before: .windowList) {
+            Button("Show Next Tab") { workspace?.cycle(1) }
+                .keyboardShortcut(.tab, modifiers: .control)
+                .disabled((workspace?.tabs.isEmpty ?? true))
+            Button("Show Previous Tab") { workspace?.cycle(-1) }
+                .keyboardShortcut(.tab, modifiers: [.control, .shift])
+                .disabled((workspace?.tabs.isEmpty ?? true))
+            Divider()
         }
 
         CommandGroup(after: .sidebar) {
-            Button("File Status") { model?.sidebarSelection = .fileStatus }
+            Button("Changes") { model?.sidebarSelection = .changes }
                 .keyboardShortcut("1")
                 .disabled(model == nil)
             Button("History") { model?.sidebarSelection = .history }
@@ -75,6 +93,8 @@ struct AppCommands: Commands {
             Button("New Tag…") { model?.sheet = .tag(nil) }
                 .keyboardShortcut("t", modifiers: [.command, .shift])
             Divider()
+            Button("Open in Editor") { model?.openInEditor() }
+                .keyboardShortcut("e", modifiers: [.command, .shift])
             Button("Show in Finder") { model?.showInFinder() }
             Button("Open in Terminal") { model?.openTerminal() }
                 .keyboardShortcut("t", modifiers: [.command, .option])
@@ -83,10 +103,10 @@ struct AppCommands: Commands {
     }
 
     private func open(_ url: URL) {
-        if let repoURL, repoURL.wrappedValue == nil {
-            repoURL.wrappedValue = url
+        if let workspace {
+            workspace.open(url)
         } else {
-            openWindow(id: "repo", value: url)
+            AppDelegate.openRepository(url)
         }
     }
 }

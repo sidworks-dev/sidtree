@@ -80,6 +80,12 @@ struct FileChange: Identifiable, Hashable {
     }
 }
 
+/// Added and removed line counts of one file; nil for binary files.
+struct LineStat: Equatable {
+    let added: Int?
+    let removed: Int?
+}
+
 enum RepoState: Equatable {
     case normal, merging, rebasing, cherryPicking, reverting
 }
@@ -136,7 +142,25 @@ struct DiffHunk: Identifiable {
     var lines: [DiffLine]
 }
 
+/// Before/after contents of a changed image, shown instead of "binary file".
+struct ImageComparison {
+    let id = UUID()
+    /// nil when the image did not exist before (added) …
+    var old: Data?
+    /// … or no longer exists (deleted).
+    var new: Data?
+
+    static let extensions: Set<String> = ["png", "jpg", "jpeg", "gif", "webp", "bmp", "tif", "tiff", "heic", "heif", "ico", "icns", "avif"]
+    /// Larger files are not previewed.
+    static let maxBytes = 40_000_000
+
+    static func isImage(_ path: String) -> Bool {
+        extensions.contains((path as NSString).pathExtension.lowercased())
+    }
+}
+
 struct FileDiff {
+    var images: ImageComparison?
     var headerLines: [String] = []
     var hunks: [DiffHunk] = []
     var isBinary = false

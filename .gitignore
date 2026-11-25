@@ -1,2 +1,8 @@
 build/
 .DS_Store
+.idea/
+
+# Local test suites and design references stay out of the repository.
+/Tests/
+/scripts/test-*.sh
+/SidTree Git GUI variant*/

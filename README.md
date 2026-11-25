@@ -47,21 +47,29 @@ How it stays fast:
 
 ## What you get
 
-- **History with a graph.** Every branch, merge and tag at a glance, with authors, dates, hashes and ahead/behind counts.
+- **All your projects in tabs.** Open several repositories side by side in one window; a dot shows which have local changes. Middle-click or ⌘W closes a tab.
+- **History with a graph.** Every branch, merge and tag at a glance, with authors, dates, hashes, ahead/behind counts and lines changed per file.
 - **Staging that stays out of the way.** Tick files to stage them, or stage, unstage and discard single hunks right from the diff. Drag files into your editor to open them.
+- **Image changes you can see.** Changed images show before and after side by side, with their size and the difference in bytes.
+- **Straight to your editor.** Open the repository, a file or the exact line in PhpStorm, VS Code, Cursor, Zed, Xcode and more. Select lines in a diff to copy them.
 - **The everyday actions.** Commit, pull, push to any remote branch, fetch, branch, merge, rebase, stash and tag.
 - **AI commit messages.** One click writes a clear commit message from your staged changes, with Claude Code or Codex.
 - **Calm conflict handling.** A clear banner while a merge or rebase is in progress, with resolve, continue and abort.
 - **Always up to date.** Changes from your editor or terminal show up by themselves.
 - **Light and dark.** A warm light theme and a dark theme, or follow macOS.
+- **Safe with any repository.** Opening a downloaded repository never runs its code: SidTree ignores custom `core.fsmonitor` programs, and files that could run (apps, scripts, executables) open in your editor instead.
 
-<img src=".github/assets/readme/status.png" alt="File status with staged and unstaged files, a diff with stage and unstage buttons per hunk, and the commit box" width="100%">
+<img src=".github/assets/readme/changes.png" alt="Changes with staged and unstaged files, a diff with a card per hunk, and the commit box" width="100%">
 
-_File status: stage whole files or single hunks, then commit._
+_Changes: stage whole files or single hunks, then commit._
 
-<img src=".github/assets/readme/dashboard.png" alt="Start screen with recent repositories, their branch, changes and last commit" width="100%">
+<img src=".github/assets/readme/image-preview.png" alt="A changed image shown before and after, with its size and the difference in bytes" width="100%">
 
-_The start screen shows every recent repository with its branch, local changes and what is waiting to be pushed or pulled._
+_Changed images are shown before and after, with the difference in bytes._
+
+<img src=".github/assets/readme/repositories.png" alt="Repositories overview with each repository's branch, local changes and last commit" width="100%">
+
+_The repositories overview shows every recent repository with its branch, local changes and what is waiting to be pushed or pulled._
 
 <img src=".github/assets/readme/history-dark.png" alt="SidTree history in the dark theme" width="100%">
 
@@ -79,7 +87,7 @@ curl -fsSL https://raw.githubusercontent.com/sidworks-dev/sidtree/main/scripts/i
 2. Open it and drag **SidTree** onto the **Applications** folder.
 3. Open SidTree from Applications. If macOS says it could not verify SidTree, choose **Done**, open **System Settings → Privacy & Security** and click **Open Anyway**. This is only needed once; updates install without it.
 
-Open a repository with **File → Open** (⌘O), pick one from the start screen, or drop a folder on the app icon.
+Open a repository with **File → Open** (⌘O), pick one from the repositories overview (⌘T), or drop a folder on the app icon. Set a default project folder and your code editor in **Settings**.
 
 To open projects from Terminal, choose **SidTree → Install Command Line Tools…** once. The Terminal installer above also installs the command automatically.
 
@@ -94,7 +102,7 @@ The command finds the repository containing the given directory or file. It uses
 
 ## AI commit messages
 
-SidTree can write the commit message for you with **Claude Code** or **Codex**, if one of them is installed and logged in on your Mac. Turn it on in **Settings → AI**, then press **Generate** next to the commit box.
+SidTree can write the commit message for you with **Claude Code** or **Codex**, if one of them is installed and logged in on your Mac. Turn it on in **Settings → AI Commit Messages**, then press **Generate** next to the commit box.
 
 - It uses fast models by default (Claude Haiku, or the fastest Codex model on your account).
 - Only a compact version of the staged changes is sent, to keep it quick and cheap.
@@ -103,18 +111,23 @@ SidTree can write the commit message for you with **Claude Code** or **Codex**, 
 
 ## Updates
 
-SidTree checks for new versions by itself and shows a small badge when one is available. **SidTree → Check for Updates…** installs it and relaunches. After an update, **What's New** lists the changes.
+SidTree checks for new versions by itself and shows a small badge when one is available. **SidTree → Check for Updates…** installs it and relaunches. An update is only installed when it carries SidTree's own signature. After an update, **What's New** lists the changes.
 
 ## Keyboard shortcuts
 
 | Action | Shortcut |
 | --- | --- |
 | Open repository | ⌘O |
-| File status / history | ⌘1 / ⌘2 |
+| Repositories overview (new tab) | ⌘T |
+| Close tab | ⌘W or middle-click |
+| Next / previous tab | ⌃⇥ / ⌃⇧⇥ |
+| Changes / history | ⌘1 / ⌘2 |
+| Open in editor | ⇧⌘E |
 | Commit | ⇧⌘C, then ⌘↩ to confirm |
 | Generate commit message | ⌥⌘G |
 | Pull / push / fetch | ⇧⌘L / ⇧⌘P / ⇧⌘F |
 | Branch / merge / stash | ⇧⌘B / ⇧⌘M / ⇧⌘S |
+| Copy selected diff lines | ⌘C |
 | Refresh | ⌘R |
 
 ## Requirements

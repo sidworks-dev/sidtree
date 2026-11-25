@@ -4,6 +4,33 @@ All notable changes to SidTree. Newest first; the app shows these notes in **Wha
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-11-25
+
+### Added
+- Repository tabs: open several repositories in one window, with a dot for local changes; close with ×, middle-click or ⌘W, and drag to reorder
+- Repositories overview (⌘T) with branch, local changes and last commit of every recent repository
+- Open the repository, a file or the exact line in your editor (PhpStorm, VS Code, Cursor, Zed, Xcode and more) with ⇧⌘E, the toolbar button or the context menus
+- Changed images show before and after side by side, with their size and the difference in bytes
+- Select diff lines and copy them with ⌘C or the context menu
+- Search staged and unstaged files by name
+- Lines added and removed per file in commit details
+- Delete branch asks whether to force the delete and whether to delete the branch on the remote too
+- Fetch, Pull and Push show a spinner while they run, and the branch being pushed shows one in the sidebar
+- Default project folder for opening and cloning repositories
+
+### Changed
+- New design in light and dark: tab bar, compact toolbar, sidebar with branches and a More section, a changes column with the commit box, diffs with a card per hunk
+- Staged and unstaged files scroll separately and share the space by their length; the line between them and the commit box can be dragged
+- History shows the commit details beside the list, with a compact graph column you can widen
+- Settings has a sidebar with General, Repositories, Editor & Tools, AI Commit Messages and Updates
+- Everything clickable shows the pointing hand
+
+### Security
+- Opening a repository never runs a program from its own `core.fsmonitor` setting
+- Files that could run code (apps, scripts, executables) open in your editor instead of running
+- Updates are only installed when they carry SidTree's signature
+- Branch, tag and remote names that look like command options are refused
+
 ## [0.5.2] - 2026-11-24
 
 ### Added

@@ -106,11 +106,11 @@ enum ProblemInterpreter {
             title: "Conflicts need your attention",
             message: files.isEmpty ? "Some files were changed on both sides." : "These files were changed on both sides:",
             files: files,
-            hint: "Resolve them in File Status, stage them and commit (or continue the rebase). You can also abort and go back.",
+            hint: "Resolve them in Changes, stage them and commit (or continue the rebase). You can also abort and go back.",
             details: f.text,
             actions: [
                 ProblemAction(title: "Abort", style: .destructive) { model.abortOperation() },
-                ProblemAction(title: "Resolve Conflicts", style: .prominent) { model.sidebarSelection = .fileStatus }
+                ProblemAction(title: "Resolve Conflicts", style: .prominent) { model.sidebarSelection = .changes }
             ])
     }
 
@@ -264,6 +264,7 @@ struct ProblemView: View {
                     .foregroundStyle(Theme.secondaryText)
                 }
                 .buttonStyle(.plain)
+                .handCursor()
                 if showDetails {
                     ScrollView {
                         Text(report.details)

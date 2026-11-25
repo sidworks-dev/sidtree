@@ -3,6 +3,7 @@ import SwiftUI
 
 extension Notification.Name {
     static let openRepositoryRequest = Notification.Name("SidTreeOpenRepositoryRequest")
+    static let openSettingsRequest = Notification.Name("SidTreeOpenSettingsRequest")
 }
 
 /// Repositories handed to the app from Finder, `open -a SidTree <dir>` or the command line.
@@ -27,12 +28,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func application(_ application: NSApplication, open urls: [URL]) {
         for url in urls where url.isFileURL {
-            let canonical = url.standardizedFileURL.resolvingSymlinksInPath()
-            guard !Self.focusRepository(canonical), !LaunchRequests.pending.contains(canonical) else { continue }
-            LaunchRequests.pending.append(canonical)
+            Self.openRepository(url.standardizedFileURL.resolvingSymlinksInPath())
         }
-        NotificationCenter.default.post(name: .openRepositoryRequest, object: nil)
-        Self.ensureWindowForPendingRequests()
     }
 
     /// When launched with paths, SwiftUI skips its default window; open one so the request is handled.
@@ -84,7 +81,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
-        NSWindow.allowsAutomaticWindowTabbing = true
+        NSWindow.allowsAutomaticWindowTabbing = false   // repositories open as SidTree tabs
         AppearanceController.shared.apply()
         showStartScreenAfterLastRepositoryCloses()
         DebugSnapshot.scheduleIfRequested()
@@ -101,7 +98,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let icon = NSWorkspace.shared.icon(forFile: url.path)
             icon.size = NSSize(width: 16, height: 16)
             item.image = icon
-            item.toolTip = (url.path as NSString).abbreviatingWithTildeInPath
+            item.toolTip = DisplayPath.of(url)
             menu.addItem(item)
         }
         if !menu.items.isEmpty { menu.addItem(.separator()) }
@@ -112,26 +109,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return menu
     }
 
-    /// Brings an already open repository window to the front, or opens the repository in a window.
+    /// Switches to the repository's tab if it is open, otherwise opens it as a tab in the frontmost window.
+    @MainActor
     static func openRepository(_ url: URL) {
         NSApp.activate(ignoringOtherApps: true)
-        if focusRepository(url) { return }
+        if Workspace.focus(url) { return }
+        if let workspace = Workspace.target {
+            workspace.bringToFront()
+            workspace.open(url)
+            return
+        }
         if !LaunchRequests.pending.contains(url) { LaunchRequests.pending.append(url) }
         NotificationCenter.default.post(name: .openRepositoryRequest, object: nil)
         ensureWindowForPendingRequests()
-    }
-
-    private static func focusRepository(_ url: URL) -> Bool {
-        let canonical = url.standardizedFileURL.resolvingSymlinksInPath()
-        if let window = NSApp.windows.first(where: {
-            ($0.isVisible || $0.isMiniaturized) && $0.representedURL?.standardizedFileURL.resolvingSymlinksInPath().path == canonical.path
-        }) {
-            NSApp.activate(ignoringOtherApps: true)
-            if window.isMiniaturized { window.deminiaturize(nil) }
-            window.makeKeyAndOrderFront(nil)
-            return true
-        }
-        return false
     }
 }
 
@@ -174,93 +164,16 @@ struct SidTreeApp: App {
 // MARK: - Focused values
 
 struct FocusedRepoKey: FocusedValueKey { typealias Value = RepoModel }
-struct FocusedRepoURLKey: FocusedValueKey { typealias Value = Binding<URL?> }
+struct FocusedWorkspaceKey: FocusedValueKey { typealias Value = Workspace }
 
 extension FocusedValues {
     var repoModel: RepoModel? {
         get { self[FocusedRepoKey.self] }
         set { self[FocusedRepoKey.self] = newValue }
     }
-    var repoURL: Binding<URL?>? {
-        get { self[FocusedRepoURLKey.self] }
-        set { self[FocusedRepoURLKey.self] = newValue }
-    }
-}
-
-// MARK: - Recent repositories
-
-final class RecentRepos: ObservableObject {
-    static let shared = RecentRepos()
-    private let key = "recentRepositories"
-    @Published private(set) var urls: [URL] = []
-
-    private init() {
-        let paths = UserDefaults.standard.stringArray(forKey: key) ?? []
-        urls = paths.map { URL(fileURLWithPath: $0) }.filter { FileManager.default.fileExists(atPath: $0.path) }
-    }
-
-    func add(_ url: URL) {
-        var list = urls.filter { $0.standardizedFileURL != url.standardizedFileURL }
-        list.insert(url, at: 0)
-        urls = Array(list.prefix(20))
-        save()
-    }
-
-    func remove(_ url: URL) {
-        urls.removeAll { $0 == url }
-        save()
-    }
-
-    func clear() {
-        urls = []
-        save()
-    }
-
-    private func save() { UserDefaults.standard.set(urls.map(\.path), forKey: key) }
-}
-
-enum RepoPicker {
-    @MainActor
-    static func choose() -> URL? {
-        let panel = NSOpenPanel()
-        panel.title = "Open Repository"
-        panel.prompt = "Open"
-        panel.canChooseDirectories = true
-        panel.canChooseFiles = false
-        panel.allowsMultipleSelection = false
-        return panel.runModal() == .OK ? panel.url : nil
-    }
-}
-
-/// Development aid: `SIDTREE_SNAPSHOT=/path/out.png` renders the main window to a PNG after launch.
-enum DebugSnapshot {
-    static func scheduleIfRequested() {
-        guard let path = ProcessInfo.processInfo.environment["SIDTREE_SNAPSHOT"] else { return }
-        let delay = Double(ProcessInfo.processInfo.environment["SIDTREE_SNAPSHOT_DELAY"] ?? "") ?? 3
-        if ProcessInfo.processInfo.environment["SIDTREE_DEBUG_CLOSE"] != nil {
-            DispatchQueue.main.asyncAfter(deadline: .now() + max(delay - 1.5, 0.5)) {
-                NSApp.windows.first { $0.identifier?.rawValue.hasPrefix("repo-") == true && $0.isVisible }?.performClose(nil)
-            }
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
-            if let appearance = ProcessInfo.processInfo.environment["SIDTREE_APPEARANCE"] {
-                NSApp.appearance = NSAppearance(named: appearance == "dark" ? .darkAqua : .aqua)
-            }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                if ProcessInfo.processInfo.environment["SIDTREE_DEBUG_WINDOWS"] != nil {
-                    for w in NSApp.windows {
-                        let line = "window id=\(w.identifier?.rawValue ?? "-") title=\(w.title) visible=\(w.isVisible)\n"
-                        FileHandle.standardError.write(Data(line.utf8))
-                    }
-                }
-                guard let main = NSApp.windows.first(where: { $0.isVisible && $0.contentView != nil && $0.frame.width > 600 }),
-                      case let window = main.attachedSheet ?? main,
-                      let view = window.contentView?.superview ?? window.contentView,
-                      let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return }
-                view.cacheDisplay(in: view.bounds, to: rep)
-                try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: path))
-            }
-        }
+    var workspace: Workspace? {
+        get { self[FocusedWorkspaceKey.self] }
+        set { self[FocusedWorkspaceKey.self] = newValue }
     }
 }
 

@@ -125,11 +125,13 @@ struct GitService {
     }
 
     private static func resolveSSHHost(_ alias: String) async -> String {
-        await withCheckedContinuation { cont in
+        // A remote URL is repository data: never let it turn into an ssh option.
+        guard !alias.hasPrefix("-"), !alias.isEmpty else { return alias }
+        return await withCheckedContinuation { cont in
             DispatchQueue.global(qos: .userInitiated).async {
                 let p = Process()
                 p.executableURL = URL(fileURLWithPath: "/usr/bin/ssh")
-                p.arguments = ["-G", alias]
+                p.arguments = ["-G", "--", alias]
                 let out = Pipe()
                 p.standardOutput = out
                 p.standardError = FileHandle.nullDevice
@@ -225,6 +227,17 @@ struct GitService {
         return Parsers.parseNameStatus(await run(args).stdout)
     }
 
+    /// Added/removed lines per file of a commit, keyed by path.
+    func lineStats(_ hash: String, parents: [String]) async -> [String: LineStat] {
+        let args: [String]
+        if parents.count > 1 {
+            args = ["diff", "-z", "--numstat", "-M", parents[0], hash]
+        } else {
+            args = ["diff-tree", "-r", "-z", "--no-commit-id", "--numstat", "-M", "--root", hash]
+        }
+        return Parsers.parseNumstat(await run(args).stdout)
+    }
+
     func lastCommitMessage() async -> String {
         await run(["log", "-1", "--format=%B"]).output.trimmingCharacters(in: .whitespacesAndNewlines)
     }
@@ -264,6 +277,45 @@ struct GitService {
         if let orig = file.originalPath { args.append(orig) }
         args.append(file.path)
         return await diff(args)
+    }
+
+    // MARK: Images
+
+    /// Raw contents of a blob such as `HEAD:path` or `:path` (the index), without filters.
+    private func blob(_ spec: String) async -> Data? {
+        let r = await run(["cat-file", "blob", spec])
+        guard r.status == 0, r.stdout.count <= ImageComparison.maxBytes else { return nil }
+        return r.stdout
+    }
+
+    private func diskData(_ path: String) -> Data? {
+        let url = root.appendingPathComponent(path)
+        guard let size = try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize, size <= ImageComparison.maxBytes else { return nil }
+        return try? Data(contentsOf: url)
+    }
+
+    /// Image before and after a working-copy change: staged compares HEAD with the index,
+    /// unstaged compares the index with the file on disk; `againstHead` compares HEAD with disk.
+    func workingImages(_ file: FileChange, againstHead: Bool = false) async -> ImageComparison? {
+        guard ImageComparison.isImage(file.path), file.kind != .conflicted else { return nil }
+        let oldPath = file.originalPath ?? file.path
+        var result = ImageComparison()
+        if againstHead || file.staged {
+            if file.kind != .added && file.kind != .untracked { result.old = await blob("HEAD:" + oldPath) }
+            if file.kind != .deleted { result.new = againstHead ? diskData(file.path) : await blob(":" + file.path) }
+        } else {
+            if file.kind != .untracked { result.old = await blob(":" + oldPath) }
+            if file.kind != .deleted { result.new = diskData(file.path) }
+        }
+        return result.old == nil && result.new == nil ? nil : result
+    }
+
+    func commitImages(_ hash: String, parents: [String], file: FileChange) async -> ImageComparison? {
+        guard ImageComparison.isImage(file.path) else { return nil }
+        var result = ImageComparison()
+        if let parent = parents.first, file.kind != .added { result.old = await blob(parent + ":" + (file.originalPath ?? file.path)) }
+        if file.kind != .deleted { result.new = await blob(hash + ":" + file.path) }
+        return result.old == nil && result.new == nil ? nil : result
     }
 
     // MARK: Index operations
@@ -332,6 +384,7 @@ struct GitService {
     }
 
     func pull(remote: String, branch: String?, rebase: Bool, commit: Bool) async throws {
+        try Self.requireNames(remote, branch ?? "")
         var args = ["pull", rebase ? "--rebase" : "--no-rebase"]
         if !commit && !rebase { args.append("--no-commit") }
         args.append(remote)
@@ -342,6 +395,7 @@ struct GitService {
     struct PushSpec { let local: String; let remote: String }
 
     func push(remote: String, specs: [PushSpec], setUpstream: Bool, tags: Bool, force: Bool) async throws {
+        try Self.requireNames(remote)
         var args = ["push", "--porcelain"]
         if setUpstream { args.append("--set-upstream") }
         if force { args.append("--force-with-lease") }
@@ -352,12 +406,14 @@ struct GitService {
     }
 
     func pushTag(_ tag: String, remote: String, force: Bool = false) async throws {
+        try Self.requireNames(remote)
         var args = ["push", remote, "refs/tags/\(tag)"]
         if force { args.append("--force") }
         try await check(args)
     }
 
     func deleteRemoteTag(_ tag: String, remote: String) async throws {
+        try Self.requireNames(remote)
         try await check(["push", remote, "--delete", "refs/tags/\(tag)"])
     }
 
@@ -380,21 +436,33 @@ struct GitService {
         try await check(["rev-parse", "--verify", "\(ref)^{commit}"]).output.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
+    /// Branch, tag, remote and stash names come from the repository (or the user). A name that starts with
+    /// "-" would be read by git as an option, so it is refused instead of passed on.
+    static func requireNames(_ names: String...) throws {
+        if let bad = names.first(where: { $0.hasPrefix("-") }) {
+            throw GitError(command: "git", message: "“\(bad)” is not a valid name: names cannot start with “-”.")
+        }
+    }
+
     // MARK: Branches
 
     func checkout(_ branch: String) async throws {
+        try Self.requireNames(branch)
         try await check(["switch", branch])
     }
 
     func checkoutRemote(_ remoteBranch: Branch, localName: String) async throws {
+        try Self.requireNames(localName, remoteBranch.name)
         try await check(["switch", "-c", localName, "--track", remoteBranch.name])
     }
 
     func checkoutDetached(_ hash: String) async throws {
+        try Self.requireNames(hash)
         try await check(["switch", "--detach", hash])
     }
 
     func createBranch(_ name: String, from start: String?, checkout: Bool) async throws {
+        try Self.requireNames(name, start ?? "")
         if checkout {
             var args = ["switch", "-c", name]
             if let start { args.append(start) }
@@ -407,18 +475,22 @@ struct GitService {
     }
 
     func deleteBranch(_ name: String, force: Bool) async throws {
+        try Self.requireNames(name)
         try await check(["branch", force ? "-D" : "-d", name])
     }
 
     func deleteRemoteBranch(remote: String, name: String) async throws {
+        try Self.requireNames(remote, name)
         try await check(["push", remote, "--delete", name])
     }
 
     func renameBranch(_ old: String, to new: String) async throws {
+        try Self.requireNames(old, new)
         try await check(["branch", "-m", old, new])
     }
 
     func merge(_ ref: String, noFF: Bool, commit: Bool, squash: Bool) async throws {
+        try Self.requireNames(ref)
         var args = ["merge"]
         if squash { args.append("--squash") } else {
             if noFF { args.append("--no-ff") }
@@ -428,7 +500,10 @@ struct GitService {
         try await check(args)
     }
 
-    func rebase(onto ref: String) async throws { try await check(["rebase", ref]) }
+    func rebase(onto ref: String) async throws {
+        try Self.requireNames(ref)
+        try await check(["rebase", ref])
+    }
 
     func abortMerge() async throws { try await check(["merge", "--abort"]) }
     func abortRebase() async throws { try await check(["rebase", "--abort"]) }
@@ -446,22 +521,33 @@ struct GitService {
 
     // MARK: Commits
 
-    func reset(to hash: String, mode: ResetMode) async throws { try await check(["reset", "--\(mode.rawValue)", hash]) }
+    func reset(to hash: String, mode: ResetMode) async throws {
+        try Self.requireNames(hash)
+        try await check(["reset", "--\(mode.rawValue)", hash])
+    }
     func revert(_ hash: String, isMerge: Bool) async throws {
+        try Self.requireNames(hash)
         var args = ["revert", "--no-edit"]
         if isMerge { args += ["-m", "1"] }
         args.append(hash)
         try await check(args)
     }
-    func cherryPick(_ hash: String) async throws { try await check(["cherry-pick", hash]) }
+    func cherryPick(_ hash: String) async throws {
+        try Self.requireNames(hash)
+        try await check(["cherry-pick", hash])
+    }
 
     func createTag(_ name: String, at hash: String, message: String?, force: Bool = false) async throws {
+        try Self.requireNames(name, hash)
         var args = ["tag"]
         if force { args.append("-f") }
         if let message, !message.isEmpty { args += ["-a", name, "-m", message, hash] } else { args += [name, hash] }
         try await check(args)
     }
-    func deleteTag(_ name: String) async throws { try await check(["tag", "-d", name]) }
+    func deleteTag(_ name: String) async throws {
+        try Self.requireNames(name)
+        try await check(["tag", "-d", name])
+    }
 
     // MARK: Stash
 
@@ -472,6 +558,12 @@ struct GitService {
         if !message.isEmpty { args += ["-m", message] }
         try await check(args)
     }
-    func applyStash(_ ref: String, pop: Bool) async throws { try await check(["stash", pop ? "pop" : "apply", "--index", ref]) }
-    func dropStash(_ ref: String) async throws { try await check(["stash", "drop", ref]) }
+    func applyStash(_ ref: String, pop: Bool) async throws {
+        try Self.requireNames(ref)
+        try await check(["stash", pop ? "pop" : "apply", "--index", ref])
+    }
+    func dropStash(_ ref: String) async throws {
+        try Self.requireNames(ref)
+        try await check(["stash", "drop", ref])
+    }
 }
