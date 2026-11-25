@@ -100,9 +100,9 @@ private struct ImageSide: View {
             .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(Theme.border, lineWidth: 1))
         }
         .frame(maxWidth: .infinity)
-        .task(id: data?.count) {
+        .task(id: data?.count) { @MainActor in
             guard let data else { image = nil; return }
-            let decoded = await Task.detached(priority: .userInitiated) { NSImage(data: data) }.value
+            let decoded = NSImage(data: data)
             image = decoded
             failed = decoded == nil
         }
