@@ -5,7 +5,9 @@ struct HistoryView: View {
     @AppStorage("split.history.v2") private var historySplit = 0.6
 
     var body: some View {
-        SplitPane(axis: .horizontal, fraction: $historySplit, minFirst: 520, minSecond: 360, divider: true) {
+        // Without a selected commit the list takes the whole width; the details appear once you pick one.
+        SplitPane(axis: .horizontal, fraction: $historySplit, minFirst: 520, minSecond: 360, divider: true,
+                  hideSecond: model.selectedCommitID == nil) {
             VStack(spacing: 0) {
                 filterBar
                 HistoryTable(model: model,

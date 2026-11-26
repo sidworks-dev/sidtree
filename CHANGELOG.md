@@ -4,6 +4,12 @@ All notable changes to SidTree. Newest first; the app shows these notes in **Wha
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-11-26
+
+### Changed
+- History uses the full width until you select a commit; the details appear next to the list once you pick one
+- Pull and Push are dimmed when there is nothing to pull or push; Push stays available for a branch that was never pushed
+
 ## [0.6.0] - 2026-11-25
 
 ### Added

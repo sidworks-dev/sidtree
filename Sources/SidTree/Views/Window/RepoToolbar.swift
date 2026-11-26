@@ -52,10 +52,15 @@ struct RepoToolbar: View {
                 SegmentButton(title: "Pull", symbol: "arrow.down", busy: pulling, help: pulling ? "Pulling…" : "Pull (⇧⌘L)",
                               action: { model.sheet = .pull },
                               badge: { CountBadge(count: model.status.behind, fill: Theme.amber, textColor: Theme.onAmber, showsZero: true) })
+                    // Nothing to pull: Fetch first to see new commits (Repository → Pull… stays available).
+                    .disabled(!pulling && (model.status.behind == 0 || model.remotes.isEmpty))
                 Rectangle().fill(Theme.controlBorder).frame(width: 1)
                 SegmentButton(title: "Push", symbol: "arrow.up", busy: pushing, help: pushing ? "Pushing…" : "Push (⇧⌘P)",
                               action: { model.sheet = .push },
                               badge: { CountBadge(count: model.status.ahead, showsZero: true) })
+                    // A branch that was never pushed has no upstream yet and can always be pushed.
+                    .disabled(!pushing && (model.remotes.isEmpty
+                                           || (model.status.ahead == 0 && model.currentBranchInfo?.upstream != nil)))
             }
             .frame(height: 30)
             .background(Theme.card)
@@ -132,6 +137,7 @@ private struct SegmentButton<Badge: View>: View {
     let action: () -> Void
     @ViewBuilder var badge: Badge
     @State private var hover = false
+    @Environment(\.isEnabled) private var isEnabled
 
     var body: some View {
         Button(action: action) {
@@ -143,11 +149,12 @@ private struct SegmentButton<Badge: View>: View {
             .foregroundStyle(Theme.text)
             .padding(.horizontal, 11)
             .frame(maxHeight: .infinity)
-            .background(hover ? Theme.controlHover : .clear)
+            .opacity(isEnabled ? 1 : 0.45)
+            .background(hover && isEnabled ? Theme.controlHover : .clear)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .handCursor()
+        .handCursor(isEnabled)
         .onHover { hover = $0 }
         .help(help)
     }

@@ -14,6 +14,8 @@ struct SplitPane<A: View, B: View>: View {
     var gap: CGFloat = 12
     /// Draws a 1pt border line as the separator (with a wider invisible grab area).
     var divider = false
+    /// Gives the first pane all the room; the second pane stays alive (and keeps its state) but hidden.
+    var hideSecond = false
     @ViewBuilder var first: A
     @ViewBuilder var second: B
 
@@ -68,9 +70,12 @@ struct SplitPane<A: View, B: View>: View {
                 }
             } else {
                 HStack(spacing: 0) {
-                    first.frame(width: firstSize)
-                    handle
+                    first.frame(width: hideSecond ? total : firstSize)
+                    if !hideSecond { handle }
                     second.frame(maxWidth: .infinity)
+                        .frame(width: hideSecond ? 0 : nil)
+                        .opacity(hideSecond ? 0 : 1)
+                        .allowsHitTesting(!hideSecond)
                 }
             }
         }
